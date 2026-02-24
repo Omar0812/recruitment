@@ -1,0 +1,10 @@
+{
+  "_comment": "复制此文件为 config.json 并填入你的配置",
+  "provider": "openai",
+  "_provider_options": ["openai", "anthropic", "gemini", "openai-compatible"],
+  "model": "gpt-4o",
+  "api_key": "your-api-key-here",
+  "_openai_compatible_extra": {
+    "base_url": "https://your-provider.com/v1"
+  }
+}

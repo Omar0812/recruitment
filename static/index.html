@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>招聘管理工具</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="logo">招聘管理</div>
+      <nav>
+        <a href="#/" class="nav-item" data-page="dashboard">首页</a>
+        <a href="#/candidates" class="nav-item" data-page="candidates">候选人</a>
+        <a href="#/jobs" class="nav-item" data-page="jobs">岗位库</a>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <div id="warning-banner" class="warning-banner hidden">
+        AI 未配置 — 请在 <code>config.json</code> 中填入 API Key 后重启应用，简历自动解析功能暂不可用。
+      </div>
+      <div id="page-content"></div>
+    </main>
+  </div>
+
+  <!-- 简历确认弹窗 -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>确认候选人信息</h2>
+      <div id="modal-body"></div>
+      <div class="modal-actions">
+        <button id="modal-cancel" class="btn btn-secondary">取消</button>
+        <button id="modal-save" class="btn btn-primary">保存候选人</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

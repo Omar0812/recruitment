@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pdfplumber
+python-docx
+pytesseract
+pillow
+openai
+anthropic
+google-generativeai
+python-multipart
+aiofiles
