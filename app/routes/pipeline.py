@@ -121,6 +121,24 @@ def update_notes(link_id: int, data: NotesUpdate, db: Session = Depends(get_db))
     return link_to_dict(lnk)
 
 
+@router.get("/active")
+def get_active_pipeline(db: Session = Depends(get_db)):
+    links = db.query(CandidateJobLink).filter(CandidateJobLink.outcome == None).all()
+    result = []
+    for lnk in links:
+        result.append({
+            "id": lnk.id,
+            "candidate_id": lnk.candidate_id,
+            "candidate_name": lnk.candidate.name if lnk.candidate else None,
+            "job_id": lnk.job_id,
+            "job_title": lnk.job.title if lnk.job else None,
+            "stage": lnk.stage,
+            "days_since_update": (datetime.utcnow() - lnk.updated_at).days if lnk.updated_at else None,
+            "notes": lnk.notes,
+        })
+    return result
+
+
 @router.get("/jobs/{job_id}/pipeline")
 def get_pipeline(job_id: int, db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id).first()

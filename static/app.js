@@ -13,7 +13,7 @@ function router() {
   });
   const content = document.getElementById("page-content");
   if (hash === "#/" || hash === "#/dashboard") return renderDashboard(content);
-  if (hash === "#/candidates") return renderCandidateList(content);
+  if (hash === "#/candidates" || hash === "#/pipeline") return renderPipelineTracking(content);
   if (hash.startsWith("#/candidates/")) return renderCandidateProfile(content, hash.split("/")[2]);
   if (hash === "#/talent") return renderTalentPool(content);
   if (hash === "#/jobs") return renderJobList(content);
@@ -35,22 +35,31 @@ window.addEventListener("DOMContentLoaded", async () => {
 async function renderDashboard(el) {
   el.innerHTML = `
     <div class="page-header"><h1>首页</h1></div>
-    <div class="upload-zone" id="upload-zone">
-      <div class="upload-icon">📄</div>
-      <strong>拖拽简历到这里，或点击上传</strong>
-      <p>支持 PDF / Word / 图片（PNG、JPG）</p>
-      <input type="file" id="file-input" style="display:none" accept=".pdf,.docx,.doc,.png,.jpg,.jpeg" multiple>
+    <div style="display:flex;gap:8px;margin-bottom:20px">
+      <button class="btn btn-primary btn-sm" id="tab-job-view">岗位视图</button>
+      <button class="btn btn-secondary btn-sm" id="tab-people-view">人视图</button>
     </div>
-    <div class="dashboard-grid">
-      <div class="card" id="stale-card"><h2>今日待跟进</h2><div id="stale-list"><span class="spinner"></span></div></div>
-      <div class="card" id="health-card"><h2>岗位健康度</h2><div id="health-list"><span class="spinner"></span></div></div>
-    </div>
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <h2 style="margin:0">AI 建议</h2>
-        <button class="btn btn-secondary btn-sm" id="refresh-insights">刷新建议</button>
+    <div id="dashboard-job-view">
+      <div class="upload-zone" id="upload-zone">
+        <div class="upload-icon">📄</div>
+        <strong>拖拽简历到这里，或点击上传</strong>
+        <p>支持 PDF / Word / 图片（PNG、JPG）</p>
+        <input type="file" id="file-input" style="display:none" accept=".pdf,.docx,.doc,.png,.jpg,.jpeg" multiple>
       </div>
-      <div id="insights-list"><p style="color:#999;font-size:14px">点击"刷新建议"获取 AI 洞察</p></div>
+      <div class="dashboard-grid">
+        <div class="card" id="stale-card"><h2>今日待跟进</h2><div id="stale-list"><span class="spinner"></span></div></div>
+        <div class="card" id="health-card"><h2>岗位健康度</h2><div id="health-list"><span class="spinner"></span></div></div>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <h2 style="margin:0">AI 建议</h2>
+          <button class="btn btn-secondary btn-sm" id="refresh-insights">刷新建议</button>
+        </div>
+        <div id="insights-list"><p style="color:#999;font-size:14px">点击"刷新建议"获取 AI 洞察</p></div>
+      </div>
+    </div>
+    <div id="dashboard-people-view" class="hidden">
+      <div id="people-view-content"><span class="spinner" style="margin:24px"></span></div>
     </div>`;
 
   setupUploadZone();
@@ -97,6 +106,52 @@ async function renderDashboard(el) {
     } else {
       insightsList.innerHTML = res.insights.map(i => `<div class="insight-item">${i}</div>`).join("");
     }
+  };
+
+  // Tab 切换
+  const jobView = document.getElementById("dashboard-job-view");
+  const peopleView = document.getElementById("dashboard-people-view");
+  const tabJob = document.getElementById("tab-job-view");
+  const tabPeople = document.getElementById("tab-people-view");
+
+  tabJob.onclick = () => {
+    jobView.classList.remove("hidden");
+    peopleView.classList.add("hidden");
+    tabJob.className = "btn btn-primary btn-sm";
+    tabPeople.className = "btn btn-secondary btn-sm";
+  };
+
+  tabPeople.onclick = async () => {
+    jobView.classList.add("hidden");
+    peopleView.classList.remove("hidden");
+    tabJob.className = "btn btn-secondary btn-sm";
+    tabPeople.className = "btn btn-primary btn-sm";
+
+    const contentEl = document.getElementById("people-view-content");
+    const links = await api.get("/api/pipeline/active");
+    if (!links.length) {
+      contentEl.innerHTML = '<div class="empty-state">暂无进行中的人选</div>';
+      return;
+    }
+    const stages = [...new Set(links.map(l => l.stage).filter(Boolean))];
+    contentEl.innerHTML = stages.map(stage => {
+      const items = links.filter(l => l.stage === stage);
+      const rows = items.map(l => {
+        const days = l.days_since_update !== null ? (l.days_since_update === 0 ? "今天" : `${l.days_since_update}天前`) : "";
+        return `<tr>
+          <td><a href="#/candidates/${l.candidate_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${l.candidate_name}</a></td>
+          <td><a href="#/jobs/pipeline/${l.job_id}" style="color:#555;font-size:13px">${l.job_title}</a></td>
+          <td style="color:#888;font-size:13px">${days}</td>
+        </tr>`;
+      }).join("");
+      return `<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+        <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid #eee;display:flex;justify-content:space-between">
+          <span style="font-weight:700">${stage}</span>
+          <span class="tag">${items.length} 人</span>
+        </div>
+        <table class="table" style="margin:0"><tbody>${rows}</tbody></table>
+      </div>`;
+    }).join("");
   };
 }
 
@@ -400,6 +455,86 @@ async function renderCandidateProfile(el, id) {
   document.getElementById("profile-followup").onchange = async (e) => {
     await api.patch(`/api/candidates/${id}`, { followup_status: e.target.value || null });
   };
+}
+
+// ── Pipeline Tracking ─────────────────────────────────────────────────────────
+async function renderPipelineTracking(el) {
+  el.innerHTML = `
+    <div class="page-header"><h1>流程跟进</h1></div>
+    <div class="filter-bar" style="margin-bottom:16px">
+      <select id="pt-group" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
+        <option value="job">按岗位分组</option>
+        <option value="stage">按阶段分组</option>
+      </select>
+      <select id="pt-job-filter" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
+        <option value="">全部岗位</option>
+      </select>
+    </div>
+    <div id="pt-content"><span class="spinner" style="margin:24px"></span></div>`;
+
+  const links = await api.get("/api/pipeline/active");
+  const contentEl = document.getElementById("pt-content");
+  if (!contentEl) return;
+
+  // 填充岗位筛选
+  const jobFilter = document.getElementById("pt-job-filter");
+  const jobs = [...new Map(links.map(l => [l.job_id, l.job_title])).entries()];
+  jobs.forEach(([id, title]) => {
+    const opt = document.createElement("option");
+    opt.value = id; opt.textContent = title;
+    jobFilter.appendChild(opt);
+  });
+
+  const renderContent = () => {
+    const groupBy = document.getElementById("pt-group")?.value || "job";
+    const jobId = document.getElementById("pt-job-filter")?.value || "";
+    let filtered = jobId ? links.filter(l => String(l.job_id) === jobId) : links;
+
+    if (!filtered.length) {
+      contentEl.innerHTML = '<div class="empty-state">暂无进行中的人选</div>';
+      return;
+    }
+
+    const groups = {};
+    filtered.forEach(l => {
+      const key = groupBy === "job" ? `${l.job_title}||${l.job_id}` : (l.stage || "未知阶段");
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(l);
+    });
+
+    contentEl.innerHTML = Object.entries(groups).map(([key, items]) => {
+      const label = groupBy === "job" ? key.split("||")[0] : key;
+      const jobId = groupBy === "job" ? key.split("||")[1] : null;
+      const rows = items.map(l => {
+        const days = l.days_since_update !== null ? (l.days_since_update === 0 ? "今天" : `${l.days_since_update}天前`) : "";
+        const stageTag = groupBy === "job" ? `<span class="tag" style="font-size:11px">${l.stage || "-"}</span>` : `<span style="font-size:12px;color:#888">${l.job_title}</span>`;
+        return `<tr>
+          <td><a href="#/candidates/${l.candidate_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${l.candidate_name}</a></td>
+          <td>${stageTag}</td>
+          <td style="color:#888;font-size:13px">${days}</td>
+          <td><a href="#/jobs/pipeline/${l.job_id}" class="btn btn-secondary btn-sm">看板</a></td>
+        </tr>`;
+      }).join("");
+
+      const titleLink = groupBy === "job"
+        ? `<a href="#/jobs/pipeline/${jobId}" style="color:#1a1a2e;text-decoration:none;font-weight:700">${label}</a>`
+        : `<span style="font-weight:700">${label}</span>`;
+
+      return `<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+        <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center">
+          ${titleLink}
+          <span class="tag">${items.length} 人</span>
+        </div>
+        <table class="table" style="margin:0">
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    }).join("");
+  };
+
+  renderContent();
+  document.getElementById("pt-group").onchange = renderContent;
+  document.getElementById("pt-job-filter").onchange = renderContent;
 }
 
 // ── Talent Pool ───────────────────────────────────────────────────────────────
