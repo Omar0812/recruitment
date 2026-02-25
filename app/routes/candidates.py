@@ -22,7 +22,7 @@ class CandidateCreate(BaseModel):
     city: Optional[str] = None
     last_company: Optional[str] = None
     last_title: Optional[str] = None
-    years_exp: Optional[int] = None
+    years_exp: Optional[float] = None
     skill_tags: Optional[List[str]] = []
     source: Optional[str] = None
     notes: Optional[str] = None
@@ -42,7 +42,7 @@ class CandidateUpdate(BaseModel):
     city: Optional[str] = None
     last_company: Optional[str] = None
     last_title: Optional[str] = None
-    years_exp: Optional[int] = None
+    years_exp: Optional[float] = None
     skill_tags: Optional[List[str]] = None
     source: Optional[str] = None
     notes: Optional[str] = None
@@ -52,8 +52,12 @@ class CandidateUpdate(BaseModel):
 
 
 def candidate_to_dict(c: Candidate) -> dict:
+    display_id = f"C{c.id:03d}"
+    display_name = f"{c.name} @{display_id}" if c.name else f"{c.name_en} @{display_id}"
     return {
         "id": c.id,
+        "display_id": display_id,
+        "display_name": display_name,
         "name": c.name,
         "name_en": c.name_en,
         "phone": c.phone,

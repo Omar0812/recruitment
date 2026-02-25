@@ -389,100 +389,157 @@ async function renderCandidateList(el) {
 }
 
 // ── Candidate Profile ─────────────────────────────────────────────────────────
+function switchTab(tabId) {
+  document.querySelectorAll(".profile-tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tabId));
+  document.querySelectorAll(".profile-tab-panel").forEach(p => p.style.display = p.dataset.tab === tabId ? "" : "none");
+}
+
 async function renderCandidateProfile(el, id) {
   el.innerHTML = '<span class="spinner"></span>';
   const c = await api.get(`/api/candidates/${id}`);
+
+  const displayId = c.display_id || `C${String(c.id).padStart(3,'0')}`;
+  const mainName = c.name || c.name_en || "?";
+  const firstWork = (c.work_experience || [])[0] || {};
+  const firstEdu = (c.education_list || [])[0] || {};
+  const activeLinks = (c.job_links || []).filter(l => !l.outcome);
+  const latestActive = activeLinks.sort((a,b) => (b.created_at||"").localeCompare(a.created_at||""))[0];
 
   el.innerHTML = `
     <div class="page-header">
       <button class="btn btn-secondary btn-sm" onclick="history.back()">← 返回</button>
     </div>
-    <div class="card">
-      <div class="profile-header">
-        <div class="profile-avatar">${(c.name || c.name_en || "?")[0]}</div>
-        <div class="profile-info">
-          <h1>${c.name || ""}${c.name_en ? `<span style="font-size:16px;color:#888;margin-left:8px">${c.name_en}</span>` : ""}</h1>
-          <p>${(c.work_experience || []).length > 0 ? `${c.work_experience[0].title || ""} @ ${c.work_experience[0].company || ""}` : [c.last_title, c.last_company].filter(Boolean).join(" @ ") || "暂无工作信息"}</p>
-          <p style="margin-top:4px">${(c.skill_tags || []).map(t => `<span class="tag">${t}</span>`).join("")}</p>
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <h1 style="margin:0;font-size:22px">${mainName} <span style="font-size:14px;color:#999;font-weight:400">@${displayId}</span></h1>
+            ${c.name && c.name_en ? `<span style="font-size:14px;color:#888">${c.name_en}</span>` : ""}
+          </div>
+          <div style="margin-top:6px;font-size:14px;color:#555">
+            ${firstWork.title ? `${firstWork.title}${firstWork.company ? " @ " + firstWork.company : ""}` : (c.last_title || c.last_company ? [c.last_title,c.last_company].filter(Boolean).join(" @ ") : "")}
+            ${firstEdu.degree ? ` &nbsp;·&nbsp; ${firstEdu.degree}${firstEdu.school ? " · " + firstEdu.school : ""}` : (c.education ? ` &nbsp;·&nbsp; ${[c.education,c.school].filter(Boolean).join(" · ")}` : "")}
+          </div>
+          <div style="margin-top:4px;font-size:13px;color:#888">
+            ${[c.phone, c.email, c.years_exp != null ? c.years_exp + "年经验" : null].filter(Boolean).join(" &nbsp;·&nbsp; ")}
+          </div>
+          <div style="margin-top:8px;font-size:13px">
+            ${latestActive
+              ? `<span style="color:#555">当前流程：</span><a href="#/jobs/pipeline/${latestActive.job_id}" style="color:#1a1a2e;font-weight:600">${latestActive.job_title}</a> → <span class="tag" style="font-size:11px">${latestActive.stage||"-"}</span>`
+              : `<span style="color:#bbb">当前流程：暂无</span>`}
+          </div>
         </div>
-        <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-start">
+        <div style="display:flex;gap:8px;align-items:flex-start;flex-shrink:0">
           ${c.resume_path ? `<a href="/resumes/${encodeURIComponent(c.resume_path.split('/').slice(-2).join('/'))}" target="_blank" class="btn btn-secondary btn-sm">查看简历</a>` : ""}
           <button class="btn btn-secondary btn-sm" id="edit-info-btn">编辑信息</button>
         </div>
       </div>
-      <div class="form-grid">
-        ${[
-          ["手机", c.phone], ["邮箱", c.email], ["年龄", c.age],
-          ["城市", c.city], ["工作年限", c.years_exp ? c.years_exp + "年" : null],
-          ["来源", c.source],
-        ].map(([label, val]) => val ? `<div class="form-group"><label>${label}</label><div style="font-size:14px;padding:8px 0">${val}</div></div>` : "").join("")}
-        <div class="form-group"><label>跟进状态</label>
-          <select id="profile-followup" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
-            <option value="" ${!c.followup_status ? "selected" : ""}>未设置</option>
-            <option value="待跟进" ${c.followup_status === "待跟进" ? "selected" : ""}>待跟进</option>
-            <option value="已联系" ${c.followup_status === "已联系" ? "selected" : ""}>已联系</option>
-            <option value="暂不考虑" ${c.followup_status === "暂不考虑" ? "selected" : ""}>暂不考虑</option>
-          </select>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+        <span style="font-size:13px;color:#666">跟进状态</span>
+        <select id="profile-followup" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;background:#fff">
+          <option value="" ${!c.followup_status ? "selected" : ""}>未设置</option>
+          <option value="待跟进" ${c.followup_status === "待跟进" ? "selected" : ""}>待跟进</option>
+          <option value="已联系" ${c.followup_status === "已联系" ? "selected" : ""}>已联系</option>
+          <option value="暂不考虑" ${c.followup_status === "暂不考虑" ? "selected" : ""}>暂不考虑</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:0;border-bottom:2px solid #e5e7eb;margin-bottom:16px">
+      <button class="profile-tab-btn active" data-tab="resume" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:#1a1a2e;border-bottom:2px solid #1a1a2e;margin-bottom:-2px">简历背景</button>
+      <button class="profile-tab-btn" data-tab="pipeline" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:14px;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px">投递记录</button>
+      <button class="profile-tab-btn" data-tab="history" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:14px;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px">历史记录</button>
+    </div>
+
+    <!-- 简历背景 tab -->
+    <div class="profile-tab-panel" data-tab="resume">
+      <div class="card">
+        <h2>工作经历</h2>
+        ${(c.work_experience||[]).length ? c.work_experience.map(w => `
+          <div style="padding:10px 0;border-bottom:1px solid #f0f0f0">
+            <div style="font-weight:600;font-size:14px">${w.title||""}${w.company ? " @ "+w.company : ""}</div>
+            ${w.period ? `<div style="font-size:12px;color:#999;margin-top:2px">${w.period}</div>` : ""}
+          </div>`).join("") : '<div class="empty-state" style="padding:16px">暂无工作经历</div>'}
+      </div>
+      <div class="card">
+        <h2>教育经历</h2>
+        ${(c.education_list||[]).length ? c.education_list.map(e => `
+          <div style="padding:10px 0;border-bottom:1px solid #f0f0f0">
+            <div style="font-weight:600;font-size:14px">${e.degree||""}${e.school ? " · "+e.school : ""}${e.major ? " · "+e.major : ""}</div>
+            ${e.period ? `<div style="font-size:12px;color:#999;margin-top:2px">${e.period}</div>` : ""}
+          </div>`).join("") : '<div class="empty-state" style="padding:16px">暂无教育经历</div>'}
+      </div>
+      <div class="card">
+        <h2>备注</h2>
+        <textarea id="notes-input" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:14px;min-height:80px;box-sizing:border-box">${c.notes||""}</textarea>
+        <button class="btn btn-primary btn-sm" style="margin-top:10px" id="save-notes">保存备注</button>
+      </div>
+    </div>
+
+    <!-- 投递记录 tab -->
+    <div class="profile-tab-panel" data-tab="pipeline" style="display:none">
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:12px 16px;display:flex;justify-content:flex-end">
+          <button class="btn btn-primary btn-sm" id="link-job-btn">+ 新增投递</button>
         </div>
+        ${(c.job_links||[]).length ? `<table class="table" style="margin:0">
+          <thead><tr><th>岗位</th><th>阶段</th><th>状态</th><th>时间</th><th>操作</th></tr></thead>
+          <tbody id="job-links-tbody">
+            ${c.job_links.map(lnk => {
+              const isActive = !lnk.outcome;
+              const statusLabel = lnk.outcome === "rejected" ? "淘汰" : lnk.outcome === "withdrawn" ? "已退出" : "进行中";
+              const statusStyle = lnk.outcome === "rejected" ? "background:#fee2e2;color:#dc2626" : lnk.outcome === "withdrawn" ? "background:#f3f4f6;color:#6b7280" : "background:#dcfce7;color:#166534";
+              return `<tr data-link-id="${lnk.id}" data-job-id="${lnk.job_id}">
+                <td><a href="#/jobs/pipeline/${lnk.job_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${lnk.job_title||"未知岗位"}</a></td>
+                <td><span class="tag" style="font-size:11px">${lnk.stage||"-"}</span></td>
+                <td><span class="tag" style="${statusStyle}">${statusLabel}</span></td>
+                <td style="font-size:12px;color:#999">${lnk.created_at ? lnk.created_at.slice(0,10) : ""}</td>
+                <td>
+                  ${isActive ? `<div style="display:flex;gap:4px">
+                    <button class="btn btn-secondary btn-sm transfer-btn" data-link-id="${lnk.id}">转移岗位</button>
+                    <button class="btn btn-danger btn-sm reject-link-btn" data-link-id="${lnk.id}">淘汰</button>
+                  </div>` : ""}
+                </td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>` : '<div class="empty-state" style="padding:24px">暂无投递记录</div>'}
       </div>
     </div>
 
-    ${(c.education_list || []).length > 0 ? `
-    <div class="card">
-      <h2>教育经历</h2>
-      ${c.education_list.map(e => `
-        <div style="padding:10px 0;border-bottom:1px solid #f0f0f0">
-          <div style="font-weight:600;font-size:14px">${e.degree || ""}${e.school ? ` · ${e.school}` : ""}${e.major ? ` · ${e.major}` : ""}</div>
-          ${e.period ? `<div style="font-size:12px;color:#999;margin-top:2px">${e.period}</div>` : ""}
-        </div>`).join("")}
-    </div>` : ""}
-
-    ${(c.work_experience || []).length > 0 ? `
-    <div class="card">
-      <h2>工作经历</h2>
-      ${c.work_experience.map(w => `
-        <div style="padding:10px 0;border-bottom:1px solid #f0f0f0">
-          <div style="font-weight:600;font-size:14px">${w.title || ""}${w.company ? ` @ ${w.company}` : ""}</div>
-          ${w.period ? `<div style="font-size:12px;color:#999;margin-top:2px">${w.period}</div>` : ""}
-        </div>`).join("")}
-    </div>` : ""}
-
-    <div class="card">
-      <h2>备注</h2>
-      <textarea id="notes-input" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:14px;min-height:80px">${c.notes || ""}</textarea>
-      <button class="btn btn-primary btn-sm" style="margin-top:10px" id="save-notes">保存备注</button>
-    </div>
-
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <h2 style="margin:0">关联岗位</h2>
-        <button class="btn btn-primary btn-sm" id="link-job-btn">+ 关联岗位</button>
+    <!-- 历史记录 tab -->
+    <div class="profile-tab-panel" data-tab="history" style="display:none">
+      <div class="card">
+        ${c.history.length ? c.history.map(h => `
+          <div class="history-item">
+            <span class="history-time">${h.timestamp ? h.timestamp.slice(0,16).replace("T"," ") : ""}</span>
+            <span>${h.detail}</span>
+          </div>`).join("") : '<div class="empty-state" style="padding:16px">暂无历史记录</div>'}
       </div>
-      <div id="job-links">
-        ${c.job_links.length ? c.job_links.map(lnk => `
-          <div class="job-health-row">
-            <div>
-              <a href="#/jobs/pipeline/${lnk.job_id}" style="font-weight:600">${lnk.job_title || "未知岗位"}</a>
-              <span style="margin-left:8px;font-size:13px;color:#666">${lnk.stage || ""}</span>
-              ${lnk.outcome ? `<span class="stale-badge" style="background:#fee2e2;color:#dc2626">${lnk.outcome === "rejected" ? "淘汰" : "退出"}</span>` : ""}
-            </div>
-            <span style="font-size:12px;color:#999">${lnk.created_at ? lnk.created_at.slice(0, 10) : ""}</span>
-          </div>`).join("") : '<div class="empty-state" style="padding:16px">暂未关联任何岗位</div>'}
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>历史记录</h2>
-      ${c.history.length ? c.history.map(h => `
-        <div class="history-item">
-          <span class="history-time">${h.timestamp ? h.timestamp.slice(0, 16).replace("T", " ") : ""}</span>
-          <span>${h.detail}</span>
-        </div>`).join("") : '<div class="empty-state" style="padding:16px">暂无历史记录</div>'}
     </div>`;
+
+  // tab 切换
+  document.querySelectorAll(".profile-tab-btn").forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll(".profile-tab-btn").forEach(b => {
+        b.classList.remove("active");
+        b.style.color = "#888";
+        b.style.borderBottomColor = "transparent";
+      });
+      btn.classList.add("active");
+      btn.style.color = "#1a1a2e";
+      btn.style.borderBottomColor = "#1a1a2e";
+      document.querySelectorAll(".profile-tab-panel").forEach(p => p.style.display = p.dataset.tab === btn.dataset.tab ? "" : "none");
+    };
+  });
 
   document.getElementById("save-notes").onclick = async () => {
     await api.patch(`/api/candidates/${id}`, { notes: document.getElementById("notes-input").value });
     alert("备注已保存");
+  };
+
+  document.getElementById("profile-followup").onchange = async (e) => {
+    await api.patch(`/api/candidates/${id}`, { followup_status: e.target.value || null });
   };
 
   document.getElementById("edit-info-btn").onclick = () => {
@@ -496,8 +553,7 @@ async function renderCandidateProfile(el, id) {
         <div class="form-group"><label>手机</label><input id="e-phone" value="${c.phone || ""}"></div>
         <div class="form-group"><label>邮箱</label><input id="e-email" value="${c.email || ""}"></div>
         <div class="form-group"><label>年龄</label><input id="e-age" type="number" value="${c.age || ""}"></div>
-        <div class="form-group"><label>城市</label><input id="e-city" value="${c.city || ""}"></div>
-        <div class="form-group"><label>工作年限</label><input id="e-years-exp" type="number" value="${c.years_exp || ""}"></div>
+        <div class="form-group"><label>工作年限</label><input id="e-years-exp" type="number" step="0.5" value="${c.years_exp || ""}"></div>
         <div class="form-group"><label>来源渠道</label><input id="e-source" value="${c.source || ""}"></div>
       </div>
       <div style="margin-top:16px">
@@ -514,16 +570,13 @@ async function renderCandidateProfile(el, id) {
         </div>
         <div id="e-work-blocks"></div>
       </div>`;
-
     const eEduContainer = document.getElementById("e-edu-blocks");
     const eWorkContainer = document.getElementById("e-work-blocks");
     (c.education_list || []).forEach(edu => eEduContainer.appendChild(renderEduBlock(edu)));
     (c.work_experience || []).forEach(work => eWorkContainer.appendChild(renderWorkBlock(work)));
     document.getElementById("e-add-edu").onclick = () => eEduContainer.appendChild(renderEduBlock());
     document.getElementById("e-add-work").onclick = () => eWorkContainer.appendChild(renderWorkBlock());
-
     overlay.classList.remove("hidden");
-
     document.getElementById("modal-cancel").onclick = () => overlay.classList.add("hidden");
     document.getElementById("modal-save").onclick = async () => {
       const eduList = collectBlocks(eEduContainer, [{key:"degree",sel:".edu-degree"},{key:"school",sel:".edu-school"},{key:"major",sel:".edu-major"},{key:"period",sel:".edu-period"}]);
@@ -534,8 +587,7 @@ async function renderCandidateProfile(el, id) {
         phone: document.getElementById("e-phone").value || null,
         email: document.getElementById("e-email").value || null,
         age: parseInt(document.getElementById("e-age").value) || null,
-        city: document.getElementById("e-city").value || null,
-        years_exp: parseInt(document.getElementById("e-years-exp").value) || null,
+        years_exp: parseFloat(document.getElementById("e-years-exp").value) || null,
         source: document.getElementById("e-source").value || null,
         education_list: eduList,
         work_experience: workList,
@@ -545,13 +597,14 @@ async function renderCandidateProfile(el, id) {
     };
   };
 
+  // 新增投递
   document.getElementById("link-job-btn").onclick = async () => {
     const jobs = await api.get("/api/jobs");
     const overlay = document.getElementById("link-job-overlay");
     const select = document.getElementById("link-job-select");
-    select.innerHTML = jobs.map(j => `<option value="${j.id}">${j.title}</option>`).join("");
+    document.querySelector("#link-job-overlay h2").textContent = "新增投递";
+    select.innerHTML = jobs.map(j => `<option value="${j.id}">${j.title} @${String(j.id).padStart(3,"0")}</option>`).join("");
     overlay.classList.remove("hidden");
-
     document.getElementById("link-job-cancel").onclick = () => overlay.classList.add("hidden");
     document.getElementById("link-job-confirm").onclick = async () => {
       const jobId = parseInt(select.value);
@@ -562,9 +615,43 @@ async function renderCandidateProfile(el, id) {
     };
   };
 
-  document.getElementById("profile-followup").onchange = async (e) => {
-    await api.patch(`/api/candidates/${id}`, { followup_status: e.target.value || null });
-  };
+  // 转移岗位
+  document.querySelectorAll(".transfer-btn").forEach(btn => {
+    btn.onclick = async () => {
+      const linkId = btn.dataset.linkId;
+      const jobs = await api.get("/api/jobs");
+      const overlay = document.getElementById("link-job-overlay");
+      const select = document.getElementById("link-job-select");
+      document.querySelector("#link-job-overlay h2").textContent = "转移岗位";
+      select.innerHTML = jobs.map(j => `<option value="${j.id}">${j.title} @${String(j.id).padStart(3,"0")}</option>`).join("");
+      overlay.classList.remove("hidden");
+      document.getElementById("link-job-cancel").onclick = () => overlay.classList.add("hidden");
+      document.getElementById("link-job-confirm").onclick = async () => {
+        const newJobId = parseInt(select.value);
+        if (!newJobId) return;
+        overlay.classList.add("hidden");
+        await api.patch(`/api/pipeline/link/${linkId}/outcome`, { outcome: "withdrawn" });
+        await api.post("/api/pipeline/link", { candidate_id: parseInt(id), job_id: newJobId });
+        renderCandidateProfile(el, id);
+      };
+    };
+  });
+
+  // 投递记录淘汰
+  document.querySelectorAll(".reject-link-btn").forEach(btn => {
+    btn.onclick = () => {
+      const linkId = btn.dataset.linkId;
+      const rejectOverlay = document.getElementById("reject-overlay");
+      rejectOverlay.classList.remove("hidden");
+      document.getElementById("reject-cancel").onclick = () => rejectOverlay.classList.add("hidden");
+      document.getElementById("reject-confirm").onclick = async () => {
+        const reason = document.getElementById("reject-reason-select").value;
+        rejectOverlay.classList.add("hidden");
+        await api.patch(`/api/pipeline/link/${linkId}/outcome`, { outcome: "rejected", rejection_reason: reason });
+        renderCandidateProfile(el, id);
+      };
+    };
+  });
 }
 
 // ── Pipeline Tracking ─────────────────────────────────────────────────────────
@@ -622,15 +709,54 @@ async function renderPipelineTracking(el) {
       <thead><tr><th>候选人</th><th>岗位</th><th>阶段</th><th>最后更新</th><th>操作</th></tr></thead>
       <tbody>${filtered.map(l => {
         const days = l.days_since_update !== null ? (l.days_since_update === 0 ? "今天" : `${l.days_since_update}天前`) : "-";
-        return `<tr>
+        return `<tr data-link-id="${l.id}">
           <td><a href="#/candidates/${l.candidate_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${l.candidate_name}</a></td>
           <td style="color:#555;font-size:13px">${l.job_title}</td>
           <td><span class="tag" style="font-size:11px">${l.stage || "-"}</span></td>
           <td style="color:#888;font-size:13px">${days}</td>
-          <td><a href="#/jobs/pipeline/${l.job_id}" class="btn btn-secondary btn-sm">看板</a></td>
+          <td><div style="display:flex;gap:4px">
+            <a href="#/jobs/pipeline/${l.job_id}" class="btn btn-secondary btn-sm">看板</a>
+            <button class="btn btn-danger btn-sm pt-reject-btn" data-link-id="${l.id}">淘汰</button>
+          </div></td>
         </tr>`;
       }).join("")}
       </tbody></table>`;
+
+    contentEl.querySelectorAll(".pt-reject-btn").forEach(btn => {
+      btn.onclick = () => {
+        const linkId = btn.dataset.linkId;
+        const rejectOverlay = document.getElementById("reject-overlay");
+        document.getElementById("reject-reason-select").value = "";
+        rejectOverlay.classList.remove("hidden");
+        document.getElementById("reject-cancel").onclick = () => rejectOverlay.classList.add("hidden");
+        document.getElementById("reject-confirm").onclick = async () => {
+          const reason = document.getElementById("reject-reason-select").value;
+          rejectOverlay.classList.add("hidden");
+          await api.patch(`/api/pipeline/link/${linkId}/outcome`, { outcome: "rejected", rejection_reason: reason });
+          // 询问是否补填面评
+          if (confirm("是否补填面试记录？")) {
+            const ivOverlay = document.getElementById("interview-overlay");
+            ivOverlay.classList.remove("hidden");
+            document.getElementById("iv-cancel").onclick = () => { ivOverlay.classList.add("hidden"); renderContent(); };
+            document.getElementById("iv-confirm").onclick = async () => {
+              await api.post(`/api/interviews`, {
+                link_id: parseInt(linkId),
+                round: document.getElementById("iv-round").value,
+                interviewer: document.getElementById("iv-interviewer").value || null,
+                interview_time: document.getElementById("iv-time").value || null,
+                score: parseInt(document.getElementById("iv-score").value) || null,
+                comment: document.getElementById("iv-comment").value || null,
+                conclusion: "淘汰",
+              });
+              ivOverlay.classList.add("hidden");
+              renderContent();
+            };
+          } else {
+            renderContent();
+          }
+        };
+      };
+    });
   };
 
   renderContent();

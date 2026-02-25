@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Float
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
@@ -17,7 +17,7 @@ class Candidate(Base):
     city = Column(String)
     last_company = Column(String)
     last_title = Column(String)
-    years_exp = Column(Integer)
+    years_exp = Column(Float)
     name_en = Column(String)
     education_list = Column(JSON, default=list)   # [{degree, school, major, period}]
     work_experience = Column(JSON, default=list)  # [{company, title, period}]
