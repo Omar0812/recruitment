@@ -21,6 +21,10 @@ class JobCreate(BaseModel):
     status: Optional[str] = "open"
     hr_owner: Optional[str] = None
     stages: Optional[List[str]] = None
+    city: Optional[str] = None
+    job_category: Optional[str] = None
+    employment_type: Optional[str] = None
+    priority: Optional[str] = None
 
 
 class JobUpdate(BaseModel):
@@ -31,6 +35,10 @@ class JobUpdate(BaseModel):
     status: Optional[str] = None
     hr_owner: Optional[str] = None
     stages: Optional[List[str]] = None
+    city: Optional[str] = None
+    job_category: Optional[str] = None
+    employment_type: Optional[str] = None
+    priority: Optional[str] = None
 
 
 def job_to_dict(job: Job, active_count: int = 0, last_activity: Optional[datetime] = None, stage_counts: Optional[dict] = None) -> dict:
@@ -38,6 +46,10 @@ def job_to_dict(job: Job, active_count: int = 0, last_activity: Optional[datetim
         "id": job.id,
         "title": job.title,
         "department": job.department,
+        "city": job.city,
+        "job_category": job.job_category,
+        "employment_type": job.employment_type,
+        "priority": job.priority,
         "jd": job.jd,
         "persona": job.persona,
         "status": job.status,
@@ -60,6 +72,10 @@ def create_job(data: JobCreate, db: Session = Depends(get_db)):
         status=data.status or "open",
         hr_owner=data.hr_owner,
         stages=data.stages or DEFAULT_STAGES,
+        city=data.city,
+        job_category=data.job_category,
+        employment_type=data.employment_type,
+        priority=data.priority,
     )
     db.add(job)
     db.commit()
@@ -72,6 +88,9 @@ def list_jobs(
     include_closed: bool = False,
     q: Optional[str] = Query(None),
     department: Optional[str] = Query(None),
+    job_category: Optional[str] = Query(None),
+    employment_type: Optional[str] = Query(None),
+    priority: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
     query = db.query(Job)
@@ -87,6 +106,12 @@ def list_jobs(
         )
     if department:
         query = query.filter(Job.department == department)
+    if job_category:
+        query = query.filter(Job.job_category == job_category)
+    if employment_type:
+        query = query.filter(Job.employment_type == employment_type)
+    if priority:
+        query = query.filter(Job.priority == priority)
     jobs = query.order_by(Job.created_at.desc()).all()
     result = []
     for job in jobs:

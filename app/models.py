@@ -40,6 +40,10 @@ class Job(Base):
     status = Column(String, default="open")  # open / closed / paused
     hr_owner = Column(String)
     stages = Column(JSON, default=lambda: ["简历筛选", "电话初筛", "面试", "Offer", "已入职"])
+    city = Column(String)              # base 城市
+    job_category = Column(String)      # 研发 / 销售 / 市场 / 职能
+    employment_type = Column(String)   # 全职 / 实习 / 顾问
+    priority = Column(String)          # 高 / 中 / 低
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

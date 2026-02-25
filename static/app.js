@@ -396,16 +396,38 @@ async function renderJobList(el) {
       <h1>岗位库</h1>
       <a href="#/jobs/new" class="btn btn-primary">+ 新建岗位</a>
     </div>
-    <div class="filter-bar">
-      <input id="job-search" type="text" placeholder="搜索职位名称、部门、HR..." style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none">
+    <div class="filter-bar" style="margin-bottom:8px">
+      <input id="job-search" type="text" placeholder="搜索职位名称、部门、HR..." style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none">
+      <button id="job-search-btn" class="btn btn-secondary btn-sm">搜索</button>
+    </div>
+    <div class="filter-bar" style="margin-bottom:16px">
       <select id="job-status-filter" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
         <option value="">全部状态</option>
-        <option value="open" selected>招聘中</option>
+        <option value="open">招聘中</option>
         <option value="paused">暂停</option>
         <option value="closed">已关闭</option>
       </select>
       <select id="job-dept-filter" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
         <option value="">全部部门</option>
+      </select>
+      <select id="job-category-filter" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
+        <option value="">全部类型</option>
+        <option value="研发">研发</option>
+        <option value="销售">销售</option>
+        <option value="市场">市场</option>
+        <option value="职能">职能</option>
+      </select>
+      <select id="job-emptype-filter" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
+        <option value="">全部属性</option>
+        <option value="全职">全职</option>
+        <option value="实习">实习</option>
+        <option value="顾问">顾问</option>
+      </select>
+      <select id="job-priority-filter" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
+        <option value="">全部优先级</option>
+        <option value="高">高</option>
+        <option value="中">中</option>
+        <option value="低">低</option>
       </select>
       <label style="font-size:14px;color:#666;cursor:pointer;white-space:nowrap">
         <input type="checkbox" id="show-closed" style="margin-right:4px">显示已关闭
@@ -415,31 +437,60 @@ async function renderJobList(el) {
       <div id="job-table"><span class="spinner" style="margin:24px"></span></div>
     </div>`;
 
+  const EMOJI_MAP = [
+    { keys: ["简历", "筛选"], emoji: "📄" },
+    { keys: ["电话", "初筛", "面试"], emoji: "🎯" },
+    { keys: ["offer", "Offer"], emoji: "🎁" },
+  ];
+
+  function stageEmoji(stageName) {
+    for (const { keys, emoji } of EMOJI_MAP) {
+      if (keys.some(k => stageName.includes(k))) return emoji;
+    }
+    return null;
+  }
+
+  function renderProgress(stageCounts, stages) {
+    const buckets = { "📄": 0, "🎯": 0, "🎁": 0 };
+    const stageList = stages || [];
+    for (const [stage, count] of Object.entries(stageCounts || {})) {
+      const emoji = stageEmoji(stage) || (stageList.indexOf(stage) < stageList.length / 2 ? "📄" : "🎯");
+      buckets[emoji] = (buckets[emoji] || 0) + count;
+    }
+    const parts = Object.entries(buckets).filter(([, n]) => n > 0).map(([e, n]) => `${e}${n}`);
+    return parts.length ? parts.join(" ") : "-";
+  }
+
   const loadJobs = async () => {
     const q = document.getElementById("job-search")?.value || "";
     const status = document.getElementById("job-status-filter")?.value || "";
     const dept = document.getElementById("job-dept-filter")?.value || "";
+    const category = document.getElementById("job-category-filter")?.value || "";
+    const emptype = document.getElementById("job-emptype-filter")?.value || "";
+    const priority = document.getElementById("job-priority-filter")?.value || "";
     const includeClosed = document.getElementById("show-closed")?.checked || false;
 
     const params = new URLSearchParams();
+    // 勾选"显示已关闭"时不过滤 closed，否则后端默认排除
     if (includeClosed) params.set("include_closed", "true");
     if (q) params.set("q", q);
     if (dept) params.set("department", dept);
+    if (category) params.set("job_category", category);
+    if (emptype) params.set("employment_type", emptype);
+    if (priority) params.set("priority", priority);
     const url = `/api/jobs${params.toString() ? "?" + params.toString() : ""}`;
 
     let jobs = await api.get(url);
-
-    // 状态筛选（前端过滤，因为 include_closed 已控制关闭岗位显示）
+    // 状态筛选：只在用户明确选了某个状态时才过滤
     if (status) jobs = jobs.filter(j => j.status === status);
 
     const tableEl = document.getElementById("job-table");
     if (!tableEl) return;
 
-    // 动态填充部门下拉（仅首次或无选中时）
+    // 动态填充部门下拉（仅首次）
     const deptSelect = document.getElementById("job-dept-filter");
     if (deptSelect && deptSelect.options.length <= 1) {
-      const depts = [...new Set(jobs.map(j => j.department).filter(Boolean))];
-      depts.forEach(d => {
+      [...new Set(jobs.map(j => j.department).filter(Boolean))].forEach(d => {
         const opt = document.createElement("option");
         opt.value = d; opt.textContent = d;
         deptSelect.appendChild(opt);
@@ -451,43 +502,63 @@ async function renderJobList(el) {
       return;
     }
 
+    const priorityStyle = { "高": "priority-high", "中": "priority-mid", "低": "priority-low" };
+
     tableEl.innerHTML = `<table class="table">
-      <thead><tr><th>#</th><th>职位名称</th><th>状态</th><th>候选人进展</th><th>最后活动</th><th>操作</th></tr></thead>
+      <thead><tr><th>职位名称</th><th>标签</th><th>状态</th><th>候选人进展</th><th>操作</th></tr></thead>
       <tbody>${jobs.map(j => {
         const num = String(j.id).padStart(3, "0");
-        const subtitle = [j.department, j.city, j.created_at ? j.created_at.slice(0, 10) : null].filter(Boolean).join(" · ");
-        const stageBadges = Object.entries(j.stage_counts || {})
-          .filter(([, n]) => n > 0)
-          .map(([s, n]) => `<span style="font-size:12px;color:#4f6ef7;margin-right:6px">● ${s}${n}</span>`)
-          .join("");
+        const subtitle = [j.city, j.job_category, j.department, j.employment_type].filter(Boolean).join(" · ");
+        const progress = renderProgress(j.stage_counts, j.stages);
+        const priorityTag = j.priority ? `<span class="priority-tag ${priorityStyle[j.priority] || ""}">${j.priority}</span>` : "";
+        const statusLabel = j.status === "open" ? "招聘中" : j.status === "paused" ? "暂停" : "已关闭";
+        const statusStyle = j.status === "open" ? "" : "background:#f0f0f0;color:#999";
         return `
         <tr>
-          <td style="color:#999;font-size:13px">#${num}</td>
           <td>
-            <a href="#/jobs/pipeline/${j.id}" style="font-weight:600">${j.title}</a>
-            ${subtitle ? `<div style="font-size:12px;color:#999;margin-top:2px">${subtitle}</div>` : ""}
+            <a href="#/jobs/pipeline/${j.id}" class="job-title-link">${j.title}</a>
+            <div class="job-subtitle">@${num}${subtitle ? "  ·  " + subtitle : ""}</div>
           </td>
-          <td><span class="tag" style="${j.status === "open" ? "" : "background:#f0f0f0;color:#999"}">${j.status === "open" ? "招聘中" : j.status === "paused" ? "暂停" : "已关闭"}</span></td>
-          <td>${stageBadges || "-"}</td>
-          <td style="font-size:13px;color:#999">${j.last_activity ? j.last_activity.slice(0, 10) : "-"}</td>
-          <td><a href="#/jobs/edit/${j.id}" class="btn btn-secondary btn-sm">编辑</a></td>
+          <td>${priorityTag}</td>
+          <td><span class="tag" style="${statusStyle}">${statusLabel}</span></td>
+          <td class="job-progress">${progress}</td>
+          <td>
+            <div style="display:flex;gap:6px">
+              <a href="#/jobs/edit/${j.id}" class="btn btn-secondary btn-sm">编辑</a>
+              ${j.status !== "closed" ? `<button class="btn btn-danger btn-sm close-job-btn" data-job-id="${j.id}">关闭</button>` : ""}
+            </div>
+          </td>
         </tr>`;
       }).join("")}
       </tbody></table>`;
+
+    tableEl.querySelectorAll(".close-job-btn").forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm("确认关闭该岗位？关闭后不再显示在招聘中列表。")) return;
+        await api.patch(`/api/jobs/${btn.dataset.jobId}`, { status: "closed" });
+        loadJobs();
+      };
+    });
   };
 
   loadJobs();
 
+  const doSearch = () => loadJobs();
   let timer;
-  document.getElementById("job-search").oninput = () => { clearTimeout(timer); timer = setTimeout(loadJobs, 300); };
+  document.getElementById("job-search").oninput = () => { clearTimeout(timer); timer = setTimeout(doSearch, 300); };
+  document.getElementById("job-search").onkeydown = (e) => { if (e.key === "Enter") { clearTimeout(timer); doSearch(); } };
+  document.getElementById("job-search-btn").onclick = () => { clearTimeout(timer); doSearch(); };
   document.getElementById("job-status-filter").onchange = loadJobs;
   document.getElementById("job-dept-filter").onchange = loadJobs;
+  document.getElementById("job-category-filter").onchange = loadJobs;
+  document.getElementById("job-emptype-filter").onchange = loadJobs;
+  document.getElementById("job-priority-filter").onchange = loadJobs;
   document.getElementById("show-closed").onchange = loadJobs;
 }
 
 // ── Job Form ──────────────────────────────────────────────────────────────────
 async function renderJobForm(el, id) {
-  let job = { title: "", department: "", jd: "", persona: "", status: "open", hr_owner: "", stages: ["简历筛选", "电话初筛", "面试", "Offer", "已入职"] };
+  let job = { title: "", department: "", jd: "", persona: "", status: "open", hr_owner: "", stages: ["简历筛选", "电话初筛", "面试", "Offer", "已入职"], city: "", job_category: "", employment_type: "", priority: "" };
   if (id) job = await api.get(`/api/jobs/${id}`);
 
   el.innerHTML = `
@@ -499,12 +570,38 @@ async function renderJobForm(el, id) {
       <div class="form-grid">
         <div class="form-group"><label>职位名称 *</label><input id="j-title" value="${job.title}"></div>
         <div class="form-group"><label>部门</label><input id="j-dept" value="${job.department || ""}"></div>
+        <div class="form-group"><label>城市（Base）</label><input id="j-city" value="${job.city || ""}"></div>
         <div class="form-group"><label>负责HR</label><input id="j-hr" value="${job.hr_owner || ""}"></div>
         <div class="form-group"><label>状态</label>
           <select id="j-status">
             <option value="open" ${job.status === "open" ? "selected" : ""}>招聘中</option>
             <option value="paused" ${job.status === "paused" ? "selected" : ""}>暂停</option>
             <option value="closed" ${job.status === "closed" ? "selected" : ""}>已关闭</option>
+          </select>
+        </div>
+        <div class="form-group"><label>岗位类型</label>
+          <select id="j-category">
+            <option value="" ${!job.job_category ? "selected" : ""}>-- 不设置 --</option>
+            <option value="研发" ${job.job_category === "研发" ? "selected" : ""}>研发</option>
+            <option value="销售" ${job.job_category === "销售" ? "selected" : ""}>销售</option>
+            <option value="市场" ${job.job_category === "市场" ? "selected" : ""}>市场</option>
+            <option value="职能" ${job.job_category === "职能" ? "selected" : ""}>职能</option>
+          </select>
+        </div>
+        <div class="form-group"><label>岗位属性</label>
+          <select id="j-emptype">
+            <option value="" ${!job.employment_type ? "selected" : ""}>-- 不设置 --</option>
+            <option value="全职" ${job.employment_type === "全职" ? "selected" : ""}>全职</option>
+            <option value="实习" ${job.employment_type === "实习" ? "selected" : ""}>实习</option>
+            <option value="顾问" ${job.employment_type === "顾问" ? "selected" : ""}>顾问</option>
+          </select>
+        </div>
+        <div class="form-group"><label>优先级</label>
+          <select id="j-priority">
+            <option value="" ${!job.priority ? "selected" : ""}>-- 不设置 --</option>
+            <option value="高" ${job.priority === "高" ? "selected" : ""}>高</option>
+            <option value="中" ${job.priority === "中" ? "selected" : ""}>中</option>
+            <option value="低" ${job.priority === "低" ? "selected" : ""}>低</option>
           </select>
         </div>
         <div class="form-group form-full"><label>JD（职位描述）</label><textarea id="j-jd" style="min-height:120px">${job.jd || ""}</textarea></div>
@@ -527,8 +624,12 @@ async function renderJobForm(el, id) {
     const data = {
       title,
       department: document.getElementById("j-dept").value || null,
+      city: document.getElementById("j-city").value || null,
       hr_owner: document.getElementById("j-hr").value || null,
       status: document.getElementById("j-status").value,
+      job_category: document.getElementById("j-category").value || null,
+      employment_type: document.getElementById("j-emptype").value || null,
+      priority: document.getElementById("j-priority").value || null,
       jd: document.getElementById("j-jd").value || null,
       persona: document.getElementById("j-persona").value || null,
       stages,
