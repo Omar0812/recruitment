@@ -47,6 +47,74 @@ async function withLoading(btn, asyncFn) {
   }
 }
 
+// ── Interview overlay (for kanban) ────────────────────────────────────────────
+function openInterviewOverlay(linkId, round, onSave) {
+  const overlay = document.getElementById("interview-overlay");
+  // reset fields
+  document.getElementById("iv-round").value = round || "";
+  document.getElementById("iv-round-label").textContent = round || "";
+  document.getElementById("iv-interviewer").value = "";
+  document.getElementById("iv-time").value = "";
+  document.getElementById("iv-score").value = "";
+  document.getElementById("iv-comment").value = "";
+  document.getElementById("iv-conclusion").value = "";
+  // reset stars
+  document.querySelectorAll(".iv-star").forEach(s => s.classList.remove("active"));
+  // reset conclusion buttons
+  document.querySelectorAll("#interview-overlay .iv-conclusion-btn").forEach(b => b.classList.remove("active"));
+  overlay.classList.remove("hidden");
+
+  document.getElementById("iv-cancel").onclick = () => overlay.classList.add("hidden");
+  const confirmBtn = document.getElementById("iv-confirm");
+  confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
+    await api.post("/api/interviews", {
+      link_id: parseInt(linkId),
+      round: document.getElementById("iv-round").value || null,
+      interviewer: document.getElementById("iv-interviewer").value || null,
+      interview_time: document.getElementById("iv-time").value || null,
+      score: parseInt(document.getElementById("iv-score").value) || null,
+      comment: document.getElementById("iv-comment").value || null,
+      conclusion: document.getElementById("iv-conclusion").value || null,
+    });
+    overlay.classList.add("hidden");
+    showToast("面试记录已保存", "success");
+    if (onSave) onSave();
+  });
+}
+
+// bind star + conclusion interactivity for the overlay (called once on DOMContentLoaded)
+function initInterviewOverlay() {
+  // stars
+  const stars = document.querySelectorAll("#iv-score-stars .iv-star");
+  stars.forEach(star => {
+    star.addEventListener("mouseenter", () => {
+      const v = parseInt(star.dataset.v);
+      stars.forEach(s => s.classList.toggle("active", parseInt(s.dataset.v) <= v));
+    });
+    star.addEventListener("mouseleave", () => {
+      const cur = parseInt(document.getElementById("iv-score").value) || 0;
+      stars.forEach(s => s.classList.toggle("active", parseInt(s.dataset.v) <= cur));
+    });
+    star.addEventListener("click", () => {
+      const v = parseInt(star.dataset.v);
+      document.getElementById("iv-score").value = v;
+      stars.forEach(s => s.classList.toggle("active", parseInt(s.dataset.v) <= v));
+    });
+  });
+  document.getElementById("iv-score-clear").onclick = () => {
+    document.getElementById("iv-score").value = "";
+    stars.forEach(s => s.classList.remove("active"));
+  };
+  // conclusion buttons
+  document.querySelectorAll("#interview-overlay .iv-conclusion-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#interview-overlay .iv-conclusion-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("iv-conclusion").value = btn.dataset.v;
+    });
+  });
+}
+
 // ── Form validation ───────────────────────────────────────────────────────────
 function validateCandidateForm({ phone, email, age, years_exp }) {
   if (phone && !/^\d{11}$/.test(phone)) { showToast("手机号格式不正确（需11位数字）", "error"); return false; }
@@ -84,6 +152,7 @@ function router() {
 
 window.addEventListener("hashchange", router);
 window.addEventListener("DOMContentLoaded", async () => {
+  initInterviewOverlay();
   const summary = await api.get("/api/dashboard/summary");
   const banner = document.getElementById("warning-banner");
   if (!summary.ai_configured) banner.classList.remove("hidden");
@@ -924,6 +993,81 @@ async function renderCandidateProfile(el, id) {
 }
 
 // ── Pipeline Tracking ─────────────────────────────────────────────────────────
+
+// shared inline iv form renderer (new or edit)
+function renderIvFormHTML(record, round) {
+  const r = record || {};
+  const score = r.score || 0;
+  const stars = [1,2,3,4,5].map(v =>
+    `<span class="iv-star${score >= v ? " active" : ""}" data-v="${v}">★</span>`
+  ).join("");
+  const conclusions = ["", "通过", "淘汰"];
+  const conclusionBtns = [
+    {v:"", label:"待定"},
+    {v:"通过", label:"通过"},
+    {v:"淘汰", label:"淘汰"},
+  ].map(c => `<button type="button" class="iv-conclusion-btn${c.v==="淘汰"?" iv-conclusion-reject":""}${r.conclusion===c.v?" active":""}" data-v="${c.v}">${c.label}</button>`).join("");
+  const timeVal = r.interview_time ? r.interview_time.slice(0,16) : "";
+  return `
+    <div class="iv-form-row">
+      <div><label>面试官</label><input class="ivf-interviewer" value="${r.interviewer||""}" placeholder="面试官姓名"></div>
+      <div><label>面试时间</label><input class="ivf-time" type="datetime-local" step="900" value="${timeVal}"></div>
+    </div>
+    <label>评分</label>
+    <div style="display:flex;gap:4px;margin:4px 0 8px">${stars}<span class="ivf-score-clear" style="font-size:12px;color:#bbb;cursor:pointer;align-self:center;margin-left:6px">清除</span></div>
+    <input class="ivf-score" type="hidden" value="${r.score||""}">
+    <label>评语</label>
+    <textarea class="ivf-comment" style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-height:50px;box-sizing:border-box;margin-bottom:8px">${r.comment||""}</textarea>
+    <label>结论</label>
+    <div style="display:flex;gap:8px;margin:4px 0 10px">${conclusionBtns}</div>
+    <input class="ivf-conclusion" type="hidden" value="${r.conclusion||""}">
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn btn-secondary btn-sm ivf-cancel">取消</button>
+      <button type="button" class="btn btn-primary btn-sm ivf-save">保存</button>
+    </div>`;
+}
+
+function bindIvFormInteractivity(container) {
+  // stars
+  const stars = container.querySelectorAll(".iv-star");
+  const scoreInput = container.querySelector(".ivf-score");
+  stars.forEach(star => {
+    star.addEventListener("mouseenter", () => {
+      const v = parseInt(star.dataset.v);
+      stars.forEach(s => s.classList.toggle("active", parseInt(s.dataset.v) <= v));
+    });
+    star.addEventListener("mouseleave", () => {
+      const cur = parseInt(scoreInput.value) || 0;
+      stars.forEach(s => s.classList.toggle("active", parseInt(s.dataset.v) <= cur));
+    });
+    star.addEventListener("click", () => {
+      const v = parseInt(star.dataset.v);
+      scoreInput.value = v;
+      stars.forEach(s => s.classList.toggle("active", parseInt(s.dataset.v) <= v));
+    });
+  });
+  const clearBtn = container.querySelector(".ivf-score-clear");
+  if (clearBtn) clearBtn.onclick = () => { scoreInput.value = ""; stars.forEach(s => s.classList.remove("active")); };
+  // conclusion buttons
+  container.querySelectorAll(".iv-conclusion-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      container.querySelectorAll(".iv-conclusion-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      container.querySelector(".ivf-conclusion").value = btn.dataset.v;
+    });
+  });
+}
+
+function getIvFormData(container) {
+  return {
+    interviewer: container.querySelector(".ivf-interviewer").value || null,
+    interview_time: container.querySelector(".ivf-time").value || null,
+    score: parseInt(container.querySelector(".ivf-score").value) || null,
+    comment: container.querySelector(".ivf-comment").value || null,
+    conclusion: container.querySelector(".ivf-conclusion").value || null,
+  };
+}
+
 async function renderPipelineTracking(el) {
   el.innerHTML = `
     <div class="page-header"><h1>流程跟进</h1></div>
@@ -940,107 +1084,224 @@ async function renderPipelineTracking(el) {
   const contentEl = document.getElementById("pt-content");
   if (!contentEl) return;
 
-  // tooltip cache & state
-  const ivCache = {};
-  let tooltipTimer = null;
-  let tooltipEl = null;
+  const ivCache = {}; // linkId -> records[]
+  let groupMode = "job";
 
-  function showTooltip(anchorEl, linkId) {
-    if (!tooltipEl) {
-      tooltipEl = document.createElement("div");
-      tooltipEl.id = "pt-tooltip";
-      tooltipEl.style.cssText = "position:fixed;z-index:9000;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;box-shadow:0 4px 16px rgba(0,0,0,0.12);font-size:12px;max-width:260px;pointer-events:none";
-      document.body.appendChild(tooltipEl);
+  // ── progress dots ──────────────────────────────────────────────────────────
+  function renderProgressDots(rounds, stages, currentStage, records) {
+    const dotCount = Math.min((rounds || 1) + 2, 7);
+    // build dot states based on stages array
+    const currentIdx = stages.indexOf(currentStage);
+    const hasFeedback = records && records.some(r => r.round === currentStage);
+    let html = '<div class="pt-progress">';
+    for (let i = 0; i < stages.length && i < dotCount; i++) {
+      if (i > 0) {
+        const lineClass = i <= currentIdx ? "done" : "";
+        html += `<div class="pt-dot-line ${lineClass}"></div>`;
+      }
+      let dotClass = "pt-dot";
+      if (i < currentIdx) dotClass += " done";
+      else if (i === currentIdx) dotClass += " current";
+      html += `<div class="${dotClass}"></div>`;
     }
-    tooltipEl.innerHTML = '<span class="spinner" style="font-size:11px">加载中...</span>';
-    tooltipEl.style.display = "block";
-    const rect = anchorEl.getBoundingClientRect();
-    tooltipEl.style.left = (rect.right + 8) + "px";
-    tooltipEl.style.top = rect.top + "px";
+    const statusSymbol = hasFeedback ? " ✓" : " ▶";
+    html += `<span class="pt-stage-label">${currentStage}${statusSymbol}</span></div>`;
+    return html;
+  }
 
-    const render = (records) => {
-      if (!records.length) { tooltipEl.innerHTML = '<span style="color:#888">暂无面评</span>'; return; }
-      const scores = records.filter(r => r.score).map(r => r.score);
-      const avg = scores.length ? (scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1) : null;
-      tooltipEl.innerHTML = records.map(r => `
-        <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #f3f4f6">
-          <div style="font-weight:600;color:#1a1a2e">${r.round || "面试"}${r.score ? ` ${"★".repeat(r.score)}${"☆".repeat(5-r.score)}` : ""}</div>
-          ${r.conclusion ? `<div style="color:#555">${r.conclusion}</div>` : ""}
-          ${r.comment ? `<div style="color:#888;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px">${r.comment}</div>` : ""}
-        </div>`).join("") + (avg ? `<div style="font-weight:600;color:#4f46e5">综合评分：${avg}</div>` : "");
-    };
+  // ── iv card (read-only) ────────────────────────────────────────────────────
+  function renderIvCard(r) {
+    const stars = r.score ? "★".repeat(r.score) + '<span style="color:#ddd">' + "★".repeat(5 - r.score) + "</span>" : "";
+    const conclusionColor = r.conclusion === "通过" ? "background:#dcfce7;color:#166534" : r.conclusion === "淘汰" ? "background:#fee2e2;color:#dc2626" : "background:#fef9c3;color:#854d0e";
+    const conclusionTag = r.conclusion ? `<span class="tag" style="font-size:11px;${conclusionColor}">${r.conclusion}</span>` : "";
+    const meta = [r.interviewer, r.interview_time ? formatTime(r.interview_time) : null].filter(Boolean).join(" · ");
+    return `
+      <div class="iv-card" data-record-id="${r.id}">
+        <button class="btn btn-secondary btn-sm iv-edit-btn" data-record-id="${r.id}">编辑</button>
+        <div class="iv-card-header">
+          <span class="iv-card-round">${r.round || "面试"}</span>
+          ${stars ? `<span class="iv-card-score">${stars}</span>` : ""}
+          ${conclusionTag}
+        </div>
+        ${meta ? `<div class="iv-card-meta">${meta}</div>` : ""}
+        ${r.comment ? `<div class="iv-card-comment">${r.comment}</div>` : ""}
+      </div>`;
+  }
 
-    if (ivCache[linkId]) { render(ivCache[linkId]); return; }
-    api.get(`/api/interviews?link_id=${linkId}`).then(data => {
-      ivCache[linkId] = data;
-      if (tooltipEl.style.display !== "none") render(data);
+  // ── expand row ─────────────────────────────────────────────────────────────
+  async function expandRow(tr, l) {
+    // load records
+    if (!ivCache[l.id]) {
+      ivCache[l.id] = await api.get(`/api/interviews?link_id=${l.id}`);
+    }
+    const records = ivCache[l.id];
+    const stages = l.job_stages || [];
+    const currentIdx = stages.indexOf(l.stage);
+    const nextStage = currentIdx >= 0 && currentIdx < stages.length - 1 ? stages[currentIdx + 1] : null;
+    const isLastStage = currentIdx === stages.length - 1;
+
+    const expandTr = document.createElement("tr");
+    expandTr.className = "pt-expand-row";
+    expandTr.dataset.linkId = l.id;
+    const colSpan = tr.cells.length;
+    expandTr.innerHTML = `<td colspan="${colSpan}"><div class="pt-expand-inner" id="pt-expand-${l.id}"></div></td>`;
+    tr.after(expandTr);
+
+    const inner = expandTr.querySelector(`#pt-expand-${l.id}`);
+    renderExpandInner(inner, l, records, stages, nextStage, isLastStage);
+  }
+
+  function renderExpandInner(inner, l, records, stages, nextStage, isLastStage) {
+    // iv cards
+    const cardsHTML = records.length
+      ? records.map(r => renderIvCard(r)).join("")
+      : `<div style="color:#aaa;font-size:13px;margin-bottom:8px">暂无面评</div>`;
+
+    // split advance button
+    const advanceMain = `<button class="pt-advance-main${isLastStage ? "" : ""}" ${isLastStage ? "disabled" : ""}>推进到 ${nextStage || "-"}</button>`;
+    const dropItems = stages.map(s => `<button class="pt-drop-stage-btn" data-stage="${s}">${s}</button>`).join("");
+    const advanceBtn = `
+      <div class="pt-advance-btn" style="position:relative">
+        ${advanceMain}
+        <button class="pt-advance-drop">▼</button>
+        <div class="pt-advance-dropdown" style="display:none">${dropItems}</div>
+      </div>`;
+
+    inner.innerHTML = `
+      <div style="margin-bottom:10px" id="pt-iv-list-${l.id}">${cardsHTML}</div>
+      <button class="btn btn-secondary btn-sm pt-add-iv-btn" style="margin-bottom:12px">+ 填写面评</button>
+      <div id="pt-new-iv-form-${l.id}" style="display:none" class="iv-edit-form"></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        ${advanceBtn}
+        <button class="btn btn-danger btn-sm pt-inline-reject-btn" data-link-id="${l.id}">淘汰</button>
+      </div>`;
+
+    // bind edit buttons on cards
+    inner.querySelectorAll(".iv-edit-btn").forEach(btn => {
+      btn.onclick = () => {
+        const recordId = parseInt(btn.dataset.recordId);
+        const record = records.find(r => r.id === recordId);
+        const card = inner.querySelector(`.iv-card[data-record-id="${recordId}"]`);
+        const formDiv = document.createElement("div");
+        formDiv.className = "iv-edit-form";
+        formDiv.innerHTML = renderIvFormHTML(record, record.round);
+        bindIvFormInteractivity(formDiv);
+        card.replaceWith(formDiv);
+        formDiv.querySelector(".ivf-cancel").onclick = () => formDiv.replaceWith(card);
+        const saveBtn = formDiv.querySelector(".ivf-save");
+        saveBtn.onclick = () => withLoading(saveBtn, async () => {
+          await api.patch(`/api/interviews/${recordId}`, getIvFormData(formDiv));
+          delete ivCache[l.id];
+          ivCache[l.id] = await api.get(`/api/interviews?link_id=${l.id}`);
+          showToast("面评已保存", "success");
+          // re-render cards
+          const listEl = inner.querySelector(`#pt-iv-list-${l.id}`);
+          listEl.innerHTML = ivCache[l.id].length ? ivCache[l.id].map(r => renderIvCard(r)).join("") : `<div style="color:#aaa;font-size:13px;margin-bottom:8px">暂无面评</div>`;
+          // rebind
+          listEl.querySelectorAll(".iv-edit-btn").forEach(b => b.onclick = () => b.closest(".iv-card") && b.click());
+          renderExpandInner(inner, {...l}, ivCache[l.id], stages, nextStage, isLastStage);
+        });
+      };
     });
-  }
 
-  function hideTooltip() {
-    if (tooltipEl) tooltipEl.style.display = "none";
-    clearTimeout(tooltipTimer);
-  }
-
-  let groupMode = "job"; // "job" | "stage"
-
-  const bindRejectBtn = (btn) => {
-    btn.onclick = () => {
-      const linkId = btn.dataset.linkId;
-      const rejectOverlay = document.getElementById("reject-overlay");
-      document.getElementById("reject-reason-select").value = "";
-      rejectOverlay.classList.remove("hidden");
-      document.getElementById("reject-cancel").onclick = () => rejectOverlay.classList.add("hidden");
-      const confirmBtn = document.getElementById("reject-confirm");
-      confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
-        const reason = document.getElementById("reject-reason-select").value;
-        rejectOverlay.classList.add("hidden");
-        await api.patch(`/api/pipeline/link/${linkId}/outcome`, { outcome: "rejected", rejection_reason: reason });
-        if (confirm("是否补填面试记录？")) {
-          const ivOverlay = document.getElementById("interview-overlay");
-          ivOverlay.classList.remove("hidden");
-          document.getElementById("iv-cancel").onclick = () => { ivOverlay.classList.add("hidden"); renderContent(); };
-          const ivBtn = document.getElementById("iv-confirm");
-          ivBtn.onclick = () => withLoading(ivBtn, async () => {
-            await api.post(`/api/interviews`, {
-              link_id: parseInt(linkId),
-              round: document.getElementById("iv-round").value,
-              interviewer: document.getElementById("iv-interviewer").value || null,
-              interview_time: document.getElementById("iv-time").value || null,
-              score: parseInt(document.getElementById("iv-score").value) || null,
-              comment: document.getElementById("iv-comment").value || null,
-              conclusion: "淘汰",
-            });
-            ivOverlay.classList.add("hidden");
-            renderContent();
-          });
-        } else {
-          renderContent();
-        }
+    // new iv form
+    const addBtn = inner.querySelector(".pt-add-iv-btn");
+    const newFormDiv = inner.querySelector(`#pt-new-iv-form-${l.id}`);
+    addBtn.onclick = () => {
+      if (newFormDiv.style.display !== "none") return;
+      newFormDiv.innerHTML = renderIvFormHTML(null, l.stage);
+      bindIvFormInteractivity(newFormDiv);
+      newFormDiv.style.display = "block";
+      addBtn.style.display = "none";
+      newFormDiv.querySelector(".ivf-cancel").onclick = () => {
+        newFormDiv.style.display = "none";
+        addBtn.style.display = "";
+      };
+      const saveBtn = newFormDiv.querySelector(".ivf-save");
+      saveBtn.onclick = () => withLoading(saveBtn, async () => {
+        await api.post("/api/interviews", { link_id: l.id, round: l.stage, ...getIvFormData(newFormDiv) });
+        delete ivCache[l.id];
+        ivCache[l.id] = await api.get(`/api/interviews?link_id=${l.id}`);
+        showToast("面评已保存", "success");
+        newFormDiv.style.display = "none";
+        addBtn.style.display = "";
+        renderExpandInner(inner, l, ivCache[l.id], stages, nextStage, isLastStage);
       });
     };
-  };
 
+    // advance button
+    const advanceMainBtn = inner.querySelector(".pt-advance-main");
+    const advanceDropBtn = inner.querySelector(".pt-advance-drop");
+    const advanceDropdown = inner.querySelector(".pt-advance-dropdown");
+    if (advanceMainBtn && nextStage) {
+      advanceMainBtn.onclick = async () => {
+        await api.patch(`/api/pipeline/link/${l.id}/stage`, { stage: nextStage });
+        l.stage = nextStage;
+        const link = links.find(lk => lk.id === l.id);
+        if (link) link.stage = nextStage;
+        showToast(`已推进到 ${nextStage}`, "success");
+        renderContent();
+      };
+    }
+    if (advanceDropBtn) {
+      advanceDropBtn.onclick = (e) => {
+        e.stopPropagation();
+        const isOpen = advanceDropdown.style.display !== "none";
+        advanceDropdown.style.display = isOpen ? "none" : "block";
+      };
+      document.addEventListener("click", () => { advanceDropdown.style.display = "none"; }, { once: true });
+    }
+    inner.querySelectorAll(".pt-drop-stage-btn").forEach(btn => {
+      btn.onclick = async () => {
+        const stage = btn.dataset.stage;
+        await api.patch(`/api/pipeline/link/${l.id}/stage`, { stage });
+        l.stage = stage;
+        const link = links.find(lk => lk.id === l.id);
+        if (link) link.stage = stage;
+        showToast(`已推进到 ${stage}`, "success");
+        renderContent();
+      };
+    });
+
+    // reject button
+    const rejectBtn = inner.querySelector(".pt-inline-reject-btn");
+    if (rejectBtn) {
+      rejectBtn.onclick = () => {
+        const rejectOverlay = document.getElementById("reject-overlay");
+        document.getElementById("reject-reason-select").value = "";
+        rejectOverlay.classList.remove("hidden");
+        document.getElementById("reject-cancel").onclick = () => rejectOverlay.classList.add("hidden");
+        const confirmBtn = document.getElementById("reject-confirm");
+        confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
+          const reason = document.getElementById("reject-reason-select").value;
+          rejectOverlay.classList.add("hidden");
+          await api.patch(`/api/pipeline/link/${l.id}/outcome`, { outcome: "rejected", rejection_reason: reason });
+          showToast("已淘汰", "success");
+          renderContent();
+        });
+      };
+    }
+  }
+
+  // ── render row ─────────────────────────────────────────────────────────────
   function renderRow(l, showJob) {
     const days = l.days_since_update !== null ? (l.days_since_update === 0 ? "今天" : `${l.days_since_update}天前`) : "-";
     const stages = l.job_stages || [];
     const starTag = l.starred ? `<span style="color:#f59e0b;font-size:13px;margin-right:2px">★</span>` : "";
-    const stageCell = showJob
-      ? `<td><select class="pt-stage-select" data-link-id="${l.id}" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;background:#fff">
-          ${stages.map(s => `<option value="${s}" ${s === l.stage ? "selected" : ""}>${s}</option>`).join("")}
-         </select></td>`
-      : `<td style="color:#555;font-size:13px">${l.job_title || "-"}</td>`;
-    return `<tr data-link-id="${l.id}">
-      <td>${starTag}<span class="pt-name-span" data-link-id="${l.id}" style="font-weight:600;color:#1a1a2e;cursor:pointer"><a href="#/candidates/${l.candidate_id}" style="color:inherit;text-decoration:none">${l.candidate_name || "-"}</a></span></td>
-      ${stageCell}
-      <td style="color:#888;font-size:13px">${days}</td>
-      <td><div style="display:flex;gap:4px">
-        <button class="btn btn-secondary btn-sm pt-iv-btn" data-link-id="${l.id}">填面评</button>
-        <button class="btn btn-danger btn-sm pt-reject-btn" data-link-id="${l.id}">淘汰</button>
-      </div></td>
+    const records = ivCache[l.id] || [];
+    const progressHTML = renderProgressDots(l.interview_rounds, stages, l.stage, records);
+    const secondCell = showJob
+      ? `<td>${progressHTML}</td>`
+      : `<td><span style="color:#555;font-size:13px;margin-right:8px">${l.job_title || "-"}</span>${progressHTML}</td>`;
+    return `<tr class="pt-row" data-link-id="${l.id}">
+      <td style="width:28px;color:#aaa;font-size:11px;padding-right:0">▶</td>
+      <td>${starTag}<a href="#/candidates/${l.candidate_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none" onclick="event.stopPropagation()">${l.candidate_name || "-"}</a></td>
+      ${secondCell}
+      <td style="color:#888;font-size:13px;white-space:nowrap">${days}</td>
     </tr>`;
   }
 
+  // ── render groups ──────────────────────────────────────────────────────────
   function renderGroups(groups, secondColLabel) {
     if (!groups.length) {
       contentEl.innerHTML = '<div class="empty-state" style="padding:32px">暂无进行中的人选</div>';
@@ -1053,53 +1314,28 @@ async function renderPipelineTracking(el) {
           <span class="tag" style="font-size:11px">${items.length}人</span>
         </div>
         <table class="table" style="margin:0">
-          <thead><tr><th>候选人</th><th>${secondColLabel}</th><th>最后更新</th><th>操作</th></tr></thead>
+          <thead><tr><th style="width:28px"></th><th>候选人</th><th>${secondColLabel}</th><th>更新</th></tr></thead>
           <tbody>${items.map(l => renderRow(l, secondColLabel === "阶段")).join("")}</tbody>
         </table>
       </div>`).join("");
-    contentEl.querySelectorAll(".pt-reject-btn").forEach(bindRejectBtn);
-    // tooltip hover
-    contentEl.querySelectorAll(".pt-name-span").forEach(span => {
-      span.addEventListener("mouseenter", () => {
-        clearTimeout(tooltipTimer);
-        tooltipTimer = setTimeout(() => showTooltip(span, span.dataset.linkId), 200);
-      });
-      span.addEventListener("mouseleave", hideTooltip);
-    });
-    contentEl.querySelectorAll(".pt-stage-select").forEach(sel => {
-      sel.onchange = async () => {
-        await api.patch(`/api/pipeline/link/${sel.dataset.linkId}/stage`, { stage: sel.value });
-        showToast("阶段已更新", "success");
-        const link = links.find(l => l.id === parseInt(sel.dataset.linkId));
-        if (link) link.stage = sel.value;
-      };
-    });
-    contentEl.querySelectorAll(".pt-iv-btn").forEach(btn => {
-      btn.onclick = () => {
-        const linkId = btn.dataset.linkId;
-        const ivOverlay = document.getElementById("interview-overlay");
-        document.getElementById("iv-round").value = "";
-        document.getElementById("iv-interviewer").value = "";
-        document.getElementById("iv-time").value = "";
-        document.getElementById("iv-score").value = "";
-        document.getElementById("iv-conclusion").value = "";
-        document.getElementById("iv-comment").value = "";
-        ivOverlay.classList.remove("hidden");
-        document.getElementById("iv-cancel").onclick = () => ivOverlay.classList.add("hidden");
-        const ivBtn = document.getElementById("iv-confirm");
-        ivBtn.onclick = () => withLoading(ivBtn, async () => {
-          await api.post(`/api/interviews`, {
-            link_id: parseInt(linkId),
-            round: document.getElementById("iv-round").value || null,
-            interviewer: document.getElementById("iv-interviewer").value || null,
-            interview_time: document.getElementById("iv-time").value || null,
-            score: parseInt(document.getElementById("iv-score").value) || null,
-            comment: document.getElementById("iv-comment").value || null,
-            conclusion: document.getElementById("iv-conclusion").value || null,
-          });
-          ivOverlay.classList.add("hidden");
-          showToast("面试记录已保存", "success");
-        });
+
+    // bind row click to expand/collapse
+    contentEl.querySelectorAll(".pt-row").forEach(tr => {
+      tr.onclick = async () => {
+        const linkId = parseInt(tr.dataset.linkId);
+        const existingExpand = contentEl.querySelector(`.pt-expand-row[data-link-id="${linkId}"]`);
+        const arrow = tr.cells[0];
+        if (existingExpand) {
+          existingExpand.remove();
+          arrow.textContent = "▶";
+          arrow.style.color = "#aaa";
+        } else {
+          const l = links.find(lk => lk.id === linkId);
+          if (!l) return;
+          arrow.textContent = "▼";
+          arrow.style.color = "#4f46e5";
+          await expandRow(tr, l);
+        }
       };
     });
   }
@@ -1850,32 +2086,7 @@ async function renderPipeline(el, jobId) {
     btn.onclick = (e) => {
       e.stopPropagation();
       const linkId = btn.dataset.linkId;
-      const overlay = document.getElementById("interview-overlay");
-      document.getElementById("iv-round").value = "一面";
-      document.getElementById("iv-interviewer").value = "";
-      document.getElementById("iv-time").value = "";
-      document.getElementById("iv-score").value = "";
-      document.getElementById("iv-comment").value = "";
-      document.getElementById("iv-conclusion").value = "";
-      overlay.classList.remove("hidden");
-
-      document.getElementById("iv-cancel").onclick = () => overlay.classList.add("hidden");
-      const kanbanIvConfirmBtn = document.getElementById("iv-confirm");
-      kanbanIvConfirmBtn.onclick = () => withLoading(kanbanIvConfirmBtn, async () => {
-        const score = document.getElementById("iv-score").value;
-        if (score && (score < 1 || score > 5)) { showToast("评分须在 1-5 之间", "error"); return; }
-        overlay.classList.add("hidden");
-        await api.post("/api/interviews", {
-          link_id: parseInt(linkId),
-          round: document.getElementById("iv-round").value,
-          interviewer: document.getElementById("iv-interviewer").value || null,
-          interview_time: document.getElementById("iv-time").value || null,
-          score: score ? parseInt(score) : null,
-          comment: document.getElementById("iv-comment").value || null,
-          conclusion: document.getElementById("iv-conclusion").value || null,
-        });
-        await loadInterviewList(linkId);
-      });
+      openInterviewOverlay(linkId, "一面", () => loadInterviewList(linkId));
     };
   });
 

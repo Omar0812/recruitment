@@ -408,3 +408,191 @@ body {
   color: #999;
   font-size: 14px;
 }
+
+/* ── Pipeline Tracking v3 ─────────────────────────────────────────────────── */
+
+/* Expandable row */
+.pt-row { cursor: pointer; transition: background 0.15s; }
+.pt-row:hover { background: #f9fafb; }
+.pt-row td { vertical-align: middle; }
+.pt-expand-row td { padding: 0 !important; border-top: none !important; }
+.pt-expand-inner {
+  padding: 12px 16px 16px 40px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Progress dots */
+.pt-progress {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  font-size: 12px;
+  color: #555;
+}
+.pt-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d1d5db;
+  flex-shrink: 0;
+}
+.pt-dot.done { background: #4f46e5; }
+.pt-dot.current {
+  background: #4f46e5;
+  box-shadow: 0 0 0 3px #e0e7ff;
+}
+.pt-dot-line {
+  width: 16px;
+  height: 2px;
+  background: #e5e7eb;
+  flex-shrink: 0;
+}
+.pt-dot-line.done { background: #4f46e5; }
+.pt-stage-label {
+  margin-left: 8px;
+  font-size: 12px;
+  color: #4f46e5;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Interview card (read-only) */
+.iv-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  position: relative;
+}
+.iv-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.iv-card-round { font-weight: 700; color: #1a1a2e; }
+.iv-card-score { color: #f59e0b; letter-spacing: 1px; }
+.iv-card-meta { font-size: 12px; color: #888; margin-top: 2px; }
+.iv-card-comment { color: #555; margin-top: 4px; }
+.iv-edit-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+/* Inline edit form */
+.iv-edit-form {
+  background: #fff;
+  border: 1px solid #4f46e5;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.iv-edit-form label {
+  display: block;
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 3px;
+  margin-top: 8px;
+}
+.iv-edit-form label:first-child { margin-top: 0; }
+.iv-edit-form input, .iv-edit-form textarea {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+.iv-edit-form textarea { min-height: 50px; resize: vertical; }
+.iv-form-row { display: flex; gap: 8px; }
+.iv-form-row > div { flex: 1; }
+
+/* Star rating (shared: overlay + inline) */
+.iv-star {
+  font-size: 22px;
+  cursor: pointer;
+  color: #ddd;
+  transition: color 0.1s;
+  user-select: none;
+}
+.iv-star.active { color: #f59e0b; }
+.iv-star:hover { color: #f59e0b; }
+
+/* Conclusion buttons (shared) */
+.iv-conclusion-btn {
+  flex: 1;
+  padding: 5px 0;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.1s;
+  color: #555;
+}
+.iv-conclusion-btn:hover { border-color: #4f46e5; color: #4f46e5; }
+.iv-conclusion-btn.active { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+.iv-conclusion-btn.iv-conclusion-reject.active { background: #dc2626; border-color: #dc2626; }
+
+/* Split advance button */
+.pt-advance-btn {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #4f46e5;
+  font-size: 13px;
+}
+.pt-advance-main {
+  padding: 5px 12px;
+  background: #4f46e5;
+  color: #fff;
+  cursor: pointer;
+  border: none;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.pt-advance-main:disabled { background: #a5b4fc; cursor: not-allowed; }
+.pt-advance-main:not(:disabled):hover { background: #4338ca; }
+.pt-advance-drop {
+  padding: 5px 8px;
+  background: #4f46e5;
+  color: #fff;
+  cursor: pointer;
+  border: none;
+  border-left: 1px solid rgba(255,255,255,0.3);
+  font-size: 12px;
+  position: relative;
+}
+.pt-advance-drop:hover { background: #4338ca; }
+.pt-advance-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  z-index: 100;
+  min-width: 120px;
+  margin-top: 2px;
+}
+.pt-advance-dropdown button {
+  display: block;
+  width: 100%;
+  padding: 7px 12px;
+  text-align: left;
+  background: none;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  color: #1a1a2e;
+}
+.pt-advance-dropdown button:hover { background: #f3f4f6; }

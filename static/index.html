@@ -68,32 +68,34 @@
     </div>
   </div>
 
-  <!-- 面试记录弹窗 -->
+  <!-- 面试记录弹窗（看板用） -->
   <div id="interview-overlay" class="modal-overlay hidden">
-    <div class="modal" style="max-width:420px">
-      <h2>新增面试记录</h2>
-      <div class="form-grid" style="margin-top:12px">
-        <div class="form-group">
-          <label>轮次</label>
-          <select id="iv-round" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px">
-            <option value="一面">一面</option>
-            <option value="二面">二面</option>
-            <option value="三面">三面</option>
-            <option value="终面">终面</option>
-            <option value="HR面">HR面</option>
-          </select>
-        </div>
+    <div class="modal" style="max-width:400px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <h2 style="margin:0">填写面评</h2>
+        <span id="iv-round-label" style="font-size:13px;color:#4f46e5;font-weight:600;background:#e0e7ff;padding:3px 10px;border-radius:12px"></span>
+      </div>
+      <input id="iv-round" type="hidden">
+      <div class="form-grid" style="margin-top:4px">
         <div class="form-group">
           <label>面试官</label>
           <input id="iv-interviewer" placeholder="面试官姓名">
         </div>
         <div class="form-group">
           <label>面试时间</label>
-          <input id="iv-time" type="datetime-local">
+          <input id="iv-time" type="datetime-local" step="900">
         </div>
-        <div class="form-group">
-          <label>评分（1-5）</label>
-          <input id="iv-score" type="number" min="1" max="5" placeholder="1-5">
+        <div class="form-group form-full">
+          <label>评分</label>
+          <div id="iv-score-stars" style="display:flex;gap:4px;margin-top:6px">
+            <span class="iv-star" data-v="1">★</span>
+            <span class="iv-star" data-v="2">★</span>
+            <span class="iv-star" data-v="3">★</span>
+            <span class="iv-star" data-v="4">★</span>
+            <span class="iv-star" data-v="5">★</span>
+            <span id="iv-score-clear" style="font-size:12px;color:#bbb;cursor:pointer;align-self:center;margin-left:6px">清除</span>
+          </div>
+          <input id="iv-score" type="hidden">
         </div>
         <div class="form-group form-full">
           <label>评语</label>
@@ -101,12 +103,12 @@
         </div>
         <div class="form-group form-full">
           <label>结论</label>
-          <select id="iv-conclusion" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px">
-            <option value="">-- 待定 --</option>
-            <option value="通过">通过</option>
-            <option value="待定">待定</option>
-            <option value="淘汰">淘汰</option>
-          </select>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <button type="button" class="iv-conclusion-btn" data-v="">待定</button>
+            <button type="button" class="iv-conclusion-btn" data-v="通过">通过</button>
+            <button type="button" class="iv-conclusion-btn iv-conclusion-reject" data-v="淘汰">淘汰</button>
+          </div>
+          <input id="iv-conclusion" type="hidden">
         </div>
       </div>
       <div class="modal-actions">
