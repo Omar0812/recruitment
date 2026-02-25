@@ -153,6 +153,8 @@ body {
   font-size: 14px;
   font-weight: 500;
   transition: all 0.15s;
+  text-decoration: none;
+  display: inline-block;
 }
 
 .btn-primary { background: #4f6ef7; color: #fff; }
@@ -215,6 +217,15 @@ body {
   padding: 2px 8px;
   font-size: 12px;
   margin: 2px;
+}
+
+/* Filter bar */
+.filter-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 /* Kanban */

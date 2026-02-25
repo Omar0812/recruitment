@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
@@ -33,7 +33,7 @@ class JobUpdate(BaseModel):
     stages: Optional[List[str]] = None
 
 
-def job_to_dict(job: Job, active_count: int = 0, last_activity: Optional[datetime] = None) -> dict:
+def job_to_dict(job: Job, active_count: int = 0, last_activity: Optional[datetime] = None, stage_counts: Optional[dict] = None) -> dict:
     return {
         "id": job.id,
         "title": job.title,
@@ -44,6 +44,7 @@ def job_to_dict(job: Job, active_count: int = 0, last_activity: Optional[datetim
         "hr_owner": job.hr_owner,
         "stages": job.stages or DEFAULT_STAGES,
         "active_count": active_count,
+        "stage_counts": stage_counts or {},
         "last_activity": last_activity.isoformat() if last_activity else None,
         "created_at": job.created_at.isoformat() if job.created_at else None,
     }
@@ -67,10 +68,25 @@ def create_job(data: JobCreate, db: Session = Depends(get_db)):
 
 
 @router.get("")
-def list_jobs(include_closed: bool = False, db: Session = Depends(get_db)):
+def list_jobs(
+    include_closed: bool = False,
+    q: Optional[str] = Query(None),
+    department: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
     query = db.query(Job)
     if not include_closed:
         query = query.filter(Job.status != "closed")
+    if q:
+        query = query.filter(
+            or_(
+                Job.title.ilike(f"%{q}%"),
+                Job.department.ilike(f"%{q}%"),
+                Job.hr_owner.ilike(f"%{q}%"),
+            )
+        )
+    if department:
+        query = query.filter(Job.department == department)
     jobs = query.order_by(Job.created_at.desc()).all()
     result = []
     for job in jobs:
@@ -78,7 +94,11 @@ def list_jobs(include_closed: bool = False, db: Session = Depends(get_db)):
         last_activity = None
         if active_links:
             last_activity = max((lnk.updated_at for lnk in active_links if lnk.updated_at), default=None)
-        result.append(job_to_dict(job, len(active_links), last_activity))
+        stage_counts = {}
+        for lnk in active_links:
+            if lnk.stage:
+                stage_counts[lnk.stage] = stage_counts.get(lnk.stage, 0) + 1
+        result.append(job_to_dict(job, len(active_links), last_activity, stage_counts))
     return result
 
 

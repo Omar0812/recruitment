@@ -394,42 +394,95 @@ async function renderJobList(el) {
   el.innerHTML = `
     <div class="page-header">
       <h1>岗位库</h1>
-      <div style="display:flex;gap:12px;align-items:center">
-        <label style="font-size:14px;color:#666;cursor:pointer">
-          <input type="checkbox" id="show-closed" style="margin-right:4px">显示已关闭岗位
-        </label>
-        <a href="#/jobs/new" class="btn btn-primary">+ 新建岗位</a>
-      </div>
+      <a href="#/jobs/new" class="btn btn-primary">+ 新建岗位</a>
+    </div>
+    <div class="filter-bar">
+      <input id="job-search" type="text" placeholder="搜索职位名称、部门、HR..." style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none">
+      <select id="job-status-filter" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
+        <option value="">全部状态</option>
+        <option value="open" selected>招聘中</option>
+        <option value="paused">暂停</option>
+        <option value="closed">已关闭</option>
+      </select>
+      <select id="job-dept-filter" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
+        <option value="">全部部门</option>
+      </select>
+      <label style="font-size:14px;color:#666;cursor:pointer;white-space:nowrap">
+        <input type="checkbox" id="show-closed" style="margin-right:4px">显示已关闭
+      </label>
     </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div id="job-table"><span class="spinner" style="margin:24px"></span></div>
     </div>`;
 
-  const loadJobs = async (includeClosed = false) => {
-    const url = includeClosed ? "/api/jobs?include_closed=true" : "/api/jobs";
-    const jobs = await api.get(url);
+  const loadJobs = async () => {
+    const q = document.getElementById("job-search")?.value || "";
+    const status = document.getElementById("job-status-filter")?.value || "";
+    const dept = document.getElementById("job-dept-filter")?.value || "";
+    const includeClosed = document.getElementById("show-closed")?.checked || false;
+
+    const params = new URLSearchParams();
+    if (includeClosed) params.set("include_closed", "true");
+    if (q) params.set("q", q);
+    if (dept) params.set("department", dept);
+    const url = `/api/jobs${params.toString() ? "?" + params.toString() : ""}`;
+
+    let jobs = await api.get(url);
+
+    // 状态筛选（前端过滤，因为 include_closed 已控制关闭岗位显示）
+    if (status) jobs = jobs.filter(j => j.status === status);
+
     const tableEl = document.getElementById("job-table");
     if (!tableEl) return;
+
+    // 动态填充部门下拉（仅首次或无选中时）
+    const deptSelect = document.getElementById("job-dept-filter");
+    if (deptSelect && deptSelect.options.length <= 1) {
+      const depts = [...new Set(jobs.map(j => j.department).filter(Boolean))];
+      depts.forEach(d => {
+        const opt = document.createElement("option");
+        opt.value = d; opt.textContent = d;
+        deptSelect.appendChild(opt);
+      });
+    }
+
     if (!jobs.length) {
-      tableEl.innerHTML = '<div class="empty-state">暂无岗位，点击右上角新建</div>';
+      tableEl.innerHTML = '<div class="empty-state">暂无岗位</div>';
       return;
     }
+
     tableEl.innerHTML = `<table class="table">
-      <thead><tr><th>职位名称</th><th>部门</th><th>状态</th><th>活跃候选人</th><th>最后活动</th><th>操作</th></tr></thead>
-      <tbody>${jobs.map(j => `
+      <thead><tr><th>#</th><th>职位名称</th><th>状态</th><th>候选人进展</th><th>最后活动</th><th>操作</th></tr></thead>
+      <tbody>${jobs.map(j => {
+        const num = String(j.id).padStart(3, "0");
+        const subtitle = [j.department, j.city, j.created_at ? j.created_at.slice(0, 10) : null].filter(Boolean).join(" · ");
+        const stageBadges = Object.entries(j.stage_counts || {})
+          .filter(([, n]) => n > 0)
+          .map(([s, n]) => `<span style="font-size:12px;color:#4f6ef7;margin-right:6px">● ${s}${n}</span>`)
+          .join("");
+        return `
         <tr>
-          <td><a href="#/jobs/pipeline/${j.id}">${j.title}</a></td>
-          <td>${j.department || "-"}</td>
+          <td style="color:#999;font-size:13px">#${num}</td>
+          <td>
+            <a href="#/jobs/pipeline/${j.id}" style="font-weight:600">${j.title}</a>
+            ${subtitle ? `<div style="font-size:12px;color:#999;margin-top:2px">${subtitle}</div>` : ""}
+          </td>
           <td><span class="tag" style="${j.status === "open" ? "" : "background:#f0f0f0;color:#999"}">${j.status === "open" ? "招聘中" : j.status === "paused" ? "暂停" : "已关闭"}</span></td>
-          <td>${j.active_count}</td>
-          <td>${j.last_activity ? j.last_activity.slice(0, 10) : "-"}</td>
+          <td>${stageBadges || "-"}</td>
+          <td style="font-size:13px;color:#999">${j.last_activity ? j.last_activity.slice(0, 10) : "-"}</td>
           <td><a href="#/jobs/edit/${j.id}" class="btn btn-secondary btn-sm">编辑</a></td>
-        </tr>`).join("")}
+        </tr>`;
+      }).join("")}
       </tbody></table>`;
   };
 
   loadJobs();
-  document.getElementById("show-closed").onchange = (e) => loadJobs(e.target.checked);
+
+  let timer;
+  document.getElementById("job-search").oninput = () => { clearTimeout(timer); timer = setTimeout(loadJobs, 300); };
+  document.getElementById("job-status-filter").onchange = loadJobs;
+  document.getElementById("job-dept-filter").onchange = loadJobs;
+  document.getElementById("show-closed").onchange = loadJobs;
 }
 
 // ── Job Form ──────────────────────────────────────────────────────────────────
