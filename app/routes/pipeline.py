@@ -38,6 +38,7 @@ def link_to_dict(lnk: CandidateJobLink) -> dict:
         "stage": lnk.stage,
         "notes": lnk.notes,
         "outcome": lnk.outcome,
+        "rejection_reason": lnk.rejection_reason,
         "created_at": lnk.created_at.isoformat() if lnk.created_at else None,
         "updated_at": lnk.updated_at.isoformat() if lnk.updated_at else None,
         "days_since_update": (datetime.utcnow() - lnk.updated_at).days if lnk.updated_at else None,
@@ -52,6 +53,14 @@ def link_candidate(data: LinkCreate, db: Session = Depends(get_db)):
     candidate = db.query(Candidate).filter(Candidate.id == data.candidate_id).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="候选人不存在")
+
+    existing = db.query(CandidateJobLink).filter(
+        CandidateJobLink.candidate_id == data.candidate_id,
+        CandidateJobLink.job_id == data.job_id,
+        CandidateJobLink.outcome.is_(None),
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="该候选人已在此岗位流程中")
 
     stage = data.stage or (job.stages[0] if job.stages else "简历筛选")
     lnk = CandidateJobLink(candidate_id=data.candidate_id, job_id=data.job_id, stage=stage)
@@ -147,7 +156,7 @@ def get_pipeline(job_id: int, db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="岗位不存在")
-    active_links = [lnk for lnk in job.candidate_links if lnk.outcome is None]
+    active_links = [lnk for lnk in job.candidate_links if lnk.outcome is None and (lnk.candidate is None or lnk.candidate.deleted_at is None)]
     stages = job.stages or []
     pipeline = {stage: [] for stage in stages}
     unmatched = []

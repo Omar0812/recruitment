@@ -5,6 +5,15 @@ const api = {
   patch: (url, data) => fetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
 };
 
+// ── Time helpers ──────────────────────────────────────────────────────────────
+function formatTime(isoStr) {
+  if (!isoStr) return "-";
+  const d = new Date(isoStr.endsWith("Z") ? isoStr : isoStr + "Z");
+  if (isNaN(d)) return "-";
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 function router() {
   const hash = location.hash || "#/";
@@ -229,6 +238,7 @@ async function uploadAndConfirm(file) {
           ${jobOptions}
         </select>
       </div>
+      <div class="form-group form-full"><label>技能标签</label><input id="f-tags" placeholder="逗号分隔，如：Java, Python, React"></div>
       <div class="form-group form-full"><label>备注</label><textarea id="f-notes"></textarea></div>
     </div>
 
@@ -281,7 +291,7 @@ async function uploadAndConfirm(file) {
       }
       const age = parseInt(document.getElementById("f-age").value);
       if (age) patch.age = age;
-      const yrs = parseInt(document.getElementById("f-years-exp").value);
+      const yrs = parseFloat(document.getElementById("f-years-exp").value);
       if (yrs) patch.years_exp = yrs;
       const tags = document.getElementById("f-tags").value.split(",").map(t => t.trim()).filter(Boolean);
       if (tags.length) patch.skill_tags = tags;
@@ -317,7 +327,7 @@ async function uploadAndConfirm(file) {
       email: document.getElementById("f-email").value.trim() || null,
       age: parseInt(document.getElementById("f-age").value) || null,
       city: document.getElementById("f-city").value.trim() || null,
-      years_exp: parseInt(document.getElementById("f-years-exp").value) || null,
+      years_exp: parseFloat(document.getElementById("f-years-exp").value) || null,
       source: document.getElementById("f-source").value.trim() || null,
       notes: document.getElementById("f-notes").value.trim() || null,
       resume_path: document.getElementById("resume-path").value || null,
@@ -371,7 +381,7 @@ async function renderCandidateList(el) {
           <td>${c.last_company || "-"}</td>
           <td>${(c.skill_tags || []).map(t => `<span class="tag">${t}</span>`).join("")}</td>
           <td>${c.source || "-"}</td>
-          <td>${c.created_at ? c.created_at.slice(0, 10) : "-"}</td>
+          <td>${formatTime(c.created_at)}</td>
         </tr>`).join("")}
       </tbody></table>`;
   };
@@ -493,7 +503,7 @@ async function renderCandidateProfile(el, id) {
                 <td><a href="#/jobs/pipeline/${lnk.job_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${lnk.job_title||"未知岗位"}</a></td>
                 <td><span class="tag" style="font-size:11px">${lnk.stage||"-"}</span></td>
                 <td><span class="tag" style="${statusStyle}">${statusLabel}</span></td>
-                <td style="font-size:12px;color:#999">${lnk.created_at ? lnk.created_at.slice(0,10) : ""}</td>
+                <td style="font-size:12px;color:#999">${formatTime(lnk.created_at)}</td>
                 <td>
                   ${isActive ? `<div style="display:flex;gap:4px">
                     <button class="btn btn-secondary btn-sm transfer-btn" data-link-id="${lnk.id}">转移岗位</button>
@@ -512,7 +522,7 @@ async function renderCandidateProfile(el, id) {
       <div class="card">
         ${c.history.length ? c.history.map(h => `
           <div class="history-item">
-            <span class="history-time">${h.timestamp ? h.timestamp.slice(0,16).replace("T"," ") : ""}</span>
+            <span class="history-time">${formatTime(h.timestamp)}</span>
             <span>${h.detail}</span>
           </div>`).join("") : '<div class="empty-state" style="padding:16px">暂无历史记录</div>'}
       </div>
@@ -555,6 +565,7 @@ async function renderCandidateProfile(el, id) {
         <div class="form-group"><label>年龄</label><input id="e-age" type="number" value="${c.age || ""}"></div>
         <div class="form-group"><label>工作年限</label><input id="e-years-exp" type="number" step="0.5" value="${c.years_exp || ""}"></div>
         <div class="form-group"><label>来源渠道</label><input id="e-source" value="${c.source || ""}"></div>
+        <div class="form-group"><label>城市</label><input id="e-city" value="${c.city || ""}"></div>
       </div>
       <div style="margin-top:16px">
         <div style="font-weight:600;font-size:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
@@ -589,6 +600,7 @@ async function renderCandidateProfile(el, id) {
         age: parseInt(document.getElementById("e-age").value) || null,
         years_exp: parseFloat(document.getElementById("e-years-exp").value) || null,
         source: document.getElementById("e-source").value || null,
+        city: document.getElementById("e-city").value || null,
         education_list: eduList,
         work_experience: workList,
       });
@@ -696,7 +708,7 @@ async function renderPipelineTracking(el) {
     const jobId = document.getElementById("pt-job-filter")?.value || "";
     const stage = document.getElementById("pt-stage-filter")?.value || "";
     let filtered = links;
-    if (q) filtered = filtered.filter(l => l.candidate_name.toLowerCase().includes(q));
+    if (q) filtered = filtered.filter(l => (l.candidate_name || "").toLowerCase().includes(q));
     if (jobId) filtered = filtered.filter(l => String(l.job_id) === jobId);
     if (stage) filtered = filtered.filter(l => l.stage === stage);
 
@@ -948,8 +960,10 @@ async function mergeCandidate(pairIdx, idA, idB) {
   }
 
   // 刷新人才库列表（如果当前在人才库页面）
-  const mainEl = document.getElementById("main");
-  if (mainEl && location.hash.includes("talent")) renderTalentPool(mainEl);
+  if (location.hash.includes("talent")) {
+    const pageEl = document.getElementById("page-content");
+    if (pageEl) renderTalentPool(pageEl);
+  }
 }
 
 // ── Job List ──────────────────────────────────────────────────────────────────
@@ -1347,7 +1361,7 @@ async function renderPipeline(el, jobId) {
       e.stopPropagation();
       const overlay = document.getElementById("note-overlay");
       const input = document.getElementById("note-input");
-      input.value = "";
+      input.value = btn.dataset.notes || "";
       overlay.classList.remove("hidden");
       input.focus();
 
@@ -1397,7 +1411,7 @@ function renderCard(lnk, stages) {
         <select class="move-stage-select" data-link-id="${lnk.id}" style="flex:1;font-size:12px;padding:3px 6px;border:1px solid #ddd;border-radius:6px;background:#f9f9f9">${stageOptions}</select>
       </div>
       <div class="card-actions" style="margin-top:4px">
-        <button class="btn btn-secondary btn-sm note-btn" data-link-id="${lnk.id}">备注</button>
+        <button class="btn btn-secondary btn-sm note-btn" data-link-id="${lnk.id}" data-notes="${(lnk.notes || "").replace(/"/g, '&quot;')}">备注</button>
         <button class="btn btn-secondary btn-sm interview-toggle-btn" data-link-id="${lnk.id}">面试记录</button>
         <button class="btn btn-danger btn-sm reject-btn" data-link-id="${lnk.id}">淘汰</button>
       </div>

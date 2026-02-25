@@ -1,5 +1,6 @@
-## ADDED Requirements
-
+## Purpose
+定义简历导入弹窗的交互规范，包括教育/工作经历积木式编辑、岗位投递选项格式、AI 解析字段以及技能标签输入。
+## Requirements
 ### Requirement: 导入弹窗积木式教育/工作经历编辑
 导入弹窗 SHALL 以积木块形式展示教育经历和工作经历，AI 解析出几条就渲染几块，每块可删除，底部有「+ 添加」按钮新增空白块。不预设空白行。
 
@@ -28,3 +29,15 @@ AI 简历解析 SHALL 返回 `education_list` 数组和 `work_experience` 数组
 #### Scenario: 多段经历提取
 - **WHEN** 简历包含本科+硕士教育经历和两段工作经历
 - **THEN** AI 返回 `education_list` 含 2 条，`work_experience` 含 2 条
+
+### Requirement: 技能标签输入框
+导入弹窗 SHALL 包含 `id="f-tags"` 的技能标签输入框，允许 HR 填写逗号分隔的技能标签，保存时解析为数组存入 `skill_tags`。
+
+#### Scenario: 保存候选人时读取标签
+- **WHEN** HR 在标签输入框中填写"Java, Spring, MySQL"并点击保存
+- **THEN** 系统将 `["Java", "Spring", "MySQL"]` 作为 `skill_tags` 保存到候选人档案
+
+#### Scenario: 标签输入框为空时
+- **WHEN** HR 未填写标签输入框
+- **THEN** 系统保存空数组 `[]` 作为 `skill_tags`，不报错
+

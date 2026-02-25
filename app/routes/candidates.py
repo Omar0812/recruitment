@@ -53,7 +53,8 @@ class CandidateUpdate(BaseModel):
 
 def candidate_to_dict(c: Candidate) -> dict:
     display_id = f"C{c.id:03d}"
-    display_name = f"{c.name} @{display_id}" if c.name else f"{c.name_en} @{display_id}"
+    main_name = c.name or c.name_en or ""
+    display_name = f"{main_name} @{display_id}" if main_name else f"@{display_id}"
     return {
         "id": c.id,
         "display_id": display_id,
@@ -128,11 +129,11 @@ def check_duplicate(data: DuplicateCheckRequest, db: Session = Depends(get_db)):
                 matches.append({"id": c.id, "name": c.name, "phone": c.phone, "email": c.email, "last_company": c.last_company})
 
     if data.phone:
-        add_matches(db.query(Candidate).filter(Candidate.phone == data.phone).all())
+        add_matches(db.query(Candidate).filter(Candidate.phone == data.phone, Candidate.deleted_at.is_(None)).all())
     if data.email:
-        add_matches(db.query(Candidate).filter(Candidate.email == data.email).all())
+        add_matches(db.query(Candidate).filter(Candidate.email == data.email, Candidate.deleted_at.is_(None)).all())
     if data.name and data.last_company:
-        add_matches(db.query(Candidate).filter(Candidate.name == data.name, Candidate.last_company == data.last_company).all())
+        add_matches(db.query(Candidate).filter(Candidate.name == data.name, Candidate.last_company == data.last_company, Candidate.deleted_at.is_(None)).all())
 
     return {"matches": matches}
     db.refresh(candidate)
