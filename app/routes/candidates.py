@@ -50,6 +50,7 @@ class CandidateUpdate(BaseModel):
     followup_status: Optional[str] = None
     education_list: Optional[List[dict]] = None
     work_experience: Optional[List[dict]] = None
+    starred: Optional[bool] = None
 
 
 def candidate_to_dict(c: Candidate) -> dict:
@@ -76,6 +77,7 @@ def candidate_to_dict(c: Candidate) -> dict:
         "notes": c.notes,
         "resume_path": c.resume_path,
         "followup_status": c.followup_status,
+        "starred": bool(c.starred),
         "education_list": c.education_list or [],
         "work_experience": c.work_experience or [],
         "created_at": c.created_at.isoformat() if c.created_at else None,
@@ -148,6 +150,7 @@ def list_candidates(
     tag: Optional[str] = Query(None),
     followup_status: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
+    starred: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
 ):
     query = db.query(Candidate).filter(Candidate.deleted_at.is_(None))
@@ -165,6 +168,8 @@ def list_candidates(
         query = query.filter(Candidate.followup_status == followup_status)
     if source:
         query = query.filter(Candidate.source == source)
+    if starred is True:
+        query = query.filter(Candidate.starred == 1)
     candidates = query.order_by(Candidate.created_at.desc()).all()
     if tag:
         candidates = [c for c in candidates if tag in (c.skill_tags or [])]
@@ -203,6 +208,8 @@ def get_candidate(candidate_id: int, db: Session = Depends(get_db)):
             "stage": lnk.stage,
             "notes": lnk.notes,
             "outcome": lnk.outcome,
+            "rejection_reason": lnk.rejection_reason,
+            "interview_rounds": lnk.interview_rounds or 1,
             "created_at": lnk.created_at.isoformat() if lnk.created_at else None,
         }
         for lnk in c.job_links

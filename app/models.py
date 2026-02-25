@@ -30,6 +30,7 @@ class Candidate(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     merged_into = Column(Integer, nullable=True)
     deleted_at = Column(DateTime, nullable=True)
+    starred = Column(Integer, default=0)  # 0/1 boolean
 
     job_links = relationship("CandidateJobLink", back_populates="candidate", cascade="all, delete-orphan")
     history = relationship("HistoryEntry", back_populates="candidate", cascade="all, delete-orphan")
@@ -50,6 +51,7 @@ class Job(Base):
     job_category = Column(String)      # 研发 / 销售 / 市场 / 职能
     employment_type = Column(String)   # 全职 / 实习 / 顾问
     priority = Column(String)          # 高 / 中 / 低
+    interview_rounds = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -69,6 +71,7 @@ class CandidateJobLink(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     rejection_reason = Column(String)  # 能力不足 / 薪资不匹配 / 主动放弃 / 其他
+    interview_rounds = Column(Integer, default=1)
 
     candidate = relationship("Candidate", back_populates="job_links")
     job = relationship("Job", back_populates="candidate_links")

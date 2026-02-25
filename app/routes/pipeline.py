@@ -29,6 +29,10 @@ class NotesUpdate(BaseModel):
     notes: str
 
 
+class InterviewRoundsUpdate(BaseModel):
+    interview_rounds: int
+
+
 def link_to_dict(lnk: CandidateJobLink) -> dict:
     return {
         "id": lnk.id,
@@ -39,6 +43,7 @@ def link_to_dict(lnk: CandidateJobLink) -> dict:
         "notes": lnk.notes,
         "outcome": lnk.outcome,
         "rejection_reason": lnk.rejection_reason,
+        "interview_rounds": lnk.interview_rounds or 1,
         "created_at": lnk.created_at.isoformat() if lnk.created_at else None,
         "updated_at": lnk.updated_at.isoformat() if lnk.updated_at else None,
         "days_since_update": (datetime.utcnow() - lnk.updated_at).days if lnk.updated_at else None,
@@ -130,6 +135,19 @@ def update_notes(link_id: int, data: NotesUpdate, db: Session = Depends(get_db))
     return link_to_dict(lnk)
 
 
+@router.patch("/link/{link_id}/interview-rounds")
+def update_interview_rounds(link_id: int, data: InterviewRoundsUpdate, db: Session = Depends(get_db)):
+    lnk = db.query(CandidateJobLink).filter(CandidateJobLink.id == link_id).first()
+    if not lnk:
+        raise HTTPException(status_code=404, detail="关联不存在")
+    rounds = max(1, data.interview_rounds)
+    lnk.interview_rounds = rounds
+    lnk.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(lnk)
+    return link_to_dict(lnk)
+
+
 @router.get("/active")
 def get_active_pipeline(db: Session = Depends(get_db)):
     links = db.query(CandidateJobLink).join(Candidate).filter(
@@ -144,8 +162,10 @@ def get_active_pipeline(db: Session = Depends(get_db)):
             "candidate_name": lnk.candidate.name if lnk.candidate else None,
             "job_id": lnk.job_id,
             "job_title": lnk.job.title if lnk.job else None,
-            "job_stages": lnk.job.stages if lnk.job else [],
+            "job_stages": lnk.job.stages or ["简历筛选", "电话初筛", "面试", "Offer", "已入职"] if lnk.job else [],
             "stage": lnk.stage,
+            "interview_rounds": lnk.interview_rounds or 1,
+            "starred": bool(lnk.candidate.starred) if lnk.candidate else False,
             "days_since_update": (datetime.utcnow() - lnk.updated_at).days if lnk.updated_at else None,
             "notes": lnk.notes,
         })

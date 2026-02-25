@@ -25,6 +25,7 @@ class JobCreate(BaseModel):
     job_category: Optional[str] = None
     employment_type: Optional[str] = None
     priority: Optional[str] = None
+    interview_rounds: Optional[int] = None
 
 
 class JobUpdate(BaseModel):
@@ -40,6 +41,7 @@ class JobUpdate(BaseModel):
     employment_type: Optional[str] = None
     priority: Optional[str] = None
     bulk_reject: Optional[bool] = False
+    interview_rounds: Optional[int] = None
 
 
 def job_to_dict(job: Job, active_count: int = 0, last_activity: Optional[datetime] = None, stage_counts: Optional[dict] = None) -> dict:
@@ -56,6 +58,7 @@ def job_to_dict(job: Job, active_count: int = 0, last_activity: Optional[datetim
         "status": job.status,
         "hr_owner": job.hr_owner,
         "stages": job.stages or DEFAULT_STAGES,
+        "interview_rounds": job.interview_rounds or 1,
         "active_count": active_count,
         "stage_counts": stage_counts or {},
         "last_activity": last_activity.isoformat() if last_activity else None,
@@ -77,6 +80,7 @@ def create_job(data: JobCreate, db: Session = Depends(get_db)):
         job_category=data.job_category,
         employment_type=data.employment_type,
         priority=data.priority,
+        interview_rounds=data.interview_rounds or 1,
     )
     db.add(job)
     db.commit()

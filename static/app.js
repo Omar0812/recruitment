@@ -57,7 +57,13 @@ function validateCandidateForm({ phone, email, age, years_exp }) {
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
+let _talentStarredOnly = false; // persists across page navigations
+
 function router() {
+  // clean up pipeline tooltip if exists
+  const tt = document.getElementById("pt-tooltip");
+  if (tt) tt.remove();
+
   const hash = location.hash || "#/";
   document.querySelectorAll(".nav-item").forEach(el => {
     el.classList.toggle("active", hash.startsWith("#/" + el.dataset.page) || (hash === "#/" && el.dataset.page === "dashboard"));
@@ -504,21 +510,12 @@ async function renderCandidateProfile(el, id) {
           <button class="btn btn-secondary btn-sm" id="edit-info-btn">编辑信息</button>
         </div>
       </div>
-      <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
-        <span style="font-size:13px;color:#666">跟进状态</span>
-        <select id="profile-followup" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;background:#fff">
-          <option value="" ${!c.followup_status ? "selected" : ""}>未设置</option>
-          <option value="待跟进" ${c.followup_status === "待跟进" ? "selected" : ""}>待跟进</option>
-          <option value="已联系" ${c.followup_status === "已联系" ? "selected" : ""}>已联系</option>
-          <option value="暂不考虑" ${c.followup_status === "暂不考虑" ? "selected" : ""}>暂不考虑</option>
-        </select>
-      </div>
     </div>
 
     <div style="display:flex;gap:0;border-bottom:2px solid #e5e7eb;margin-bottom:16px">
       <button class="profile-tab-btn active" data-tab="resume" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:#1a1a2e;border-bottom:2px solid #1a1a2e;margin-bottom:-2px">过往背景</button>
       ${c.resume_path ? `<button class="profile-tab-btn" data-tab="preview" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:14px;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px">简历预览</button>` : ""}
-      <button class="profile-tab-btn" data-tab="pipeline" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:14px;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px">投递记录</button>
+      <button class="profile-tab-btn" data-tab="pipeline" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:14px;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px">流程</button>
       <button class="profile-tab-btn" data-tab="history" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:14px;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px">历史记录</button>
     </div>
 
@@ -550,43 +547,9 @@ async function renderCandidateProfile(el, id) {
       </div>
     </div>
 
-    <!-- 投递记录 tab -->
+    <!-- 流程 tab -->
     <div class="profile-tab-panel" data-tab="pipeline" style="display:none">
-      <div class="card" style="padding:0;overflow:hidden">
-        <div style="padding:12px 16px;display:flex;justify-content:flex-end">
-          <button class="btn btn-primary btn-sm" id="link-job-btn">+ 新增投递</button>
-        </div>
-        ${(c.job_links||[]).length ? `<table class="table" style="margin:0">
-          <thead><tr><th></th><th>岗位</th><th>阶段</th><th>状态</th><th>时间</th><th>操作</th></tr></thead>
-          <tbody id="job-links-tbody">
-            ${c.job_links.map(lnk => {
-              const isActive = !lnk.outcome;
-              const statusLabel = lnk.outcome === "rejected" ? "淘汰" : lnk.outcome === "withdrawn" ? "已退出" : "进行中";
-              const statusStyle = lnk.outcome === "rejected" ? "background:#fee2e2;color:#dc2626" : lnk.outcome === "withdrawn" ? "background:#f3f4f6;color:#6b7280" : "background:#dcfce7;color:#166534";
-              return `<tr data-link-id="${lnk.id}" data-job-id="${lnk.job_id}">
-                <td style="width:28px;padding:8px 4px 8px 12px">
-                  <button class="iv-expand-btn" data-link-id="${lnk.id}" style="background:none;border:none;cursor:pointer;font-size:12px;color:#888;padding:2px 4px" title="查看面试记录">▶</button>
-                </td>
-                <td><a href="#/jobs/pipeline/${lnk.job_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${lnk.job_title||"未知岗位"}</a></td>
-                <td><span class="tag" style="font-size:11px">${lnk.stage||"-"}</span></td>
-                <td><span class="tag" style="${statusStyle}">${statusLabel}</span></td>
-                <td style="font-size:12px;color:#999">${formatTime(lnk.created_at)}</td>
-                <td>
-                  ${isActive ? `<div style="display:flex;gap:4px">
-                    <button class="btn btn-secondary btn-sm transfer-btn" data-link-id="${lnk.id}">转移岗位</button>
-                    <button class="btn btn-danger btn-sm reject-link-btn" data-link-id="${lnk.id}">淘汰</button>
-                  </div>` : ""}
-                </td>
-              </tr>
-              <tr class="iv-detail-row hidden" id="iv-detail-${lnk.id}">
-                <td colspan="6" style="padding:0 12px 12px 40px;background:#fafafa">
-                  <div id="iv-detail-content-${lnk.id}" style="font-size:13px;color:#555"></div>
-                </td>
-              </tr>`;
-            }).join("")}
-          </tbody>
-        </table>` : '<div class="empty-state" style="padding:24px">暂无投递记录</div>'}
-      </div>
+      <div id="pipeline-tab-content"><span class="spinner" style="margin:24px"></span></div>
     </div>
 
     <!-- 历史记录 tab -->
@@ -644,10 +607,6 @@ async function renderCandidateProfile(el, id) {
   document.getElementById("save-notes").onclick = async () => {
     await api.patch(`/api/candidates/${id}`, { notes: document.getElementById("notes-input").value });
     alert("备注已保存");
-  };
-
-  document.getElementById("profile-followup").onchange = async (e) => {
-    await api.patch(`/api/candidates/${id}`, { followup_status: e.target.value || null });
   };
 
   document.getElementById("edit-info-btn").onclick = () => {
@@ -713,80 +672,136 @@ async function renderCandidateProfile(el, id) {
     });
   };
 
-  // 投递记录展开面试记录（懒加载）
-  const ivCache = {};
-  document.querySelectorAll(".iv-expand-btn").forEach(btn => {
-    btn.onclick = async () => {
-      const linkId = btn.dataset.linkId;
-      const detailRow = document.getElementById(`iv-detail-${linkId}`);
-      const contentEl = document.getElementById(`iv-detail-content-${linkId}`);
-      const isHidden = detailRow.classList.toggle("hidden");
-      btn.textContent = isHidden ? "▶" : "▼";
-      if (!isHidden && !ivCache[linkId]) {
-        contentEl.innerHTML = '<span class="spinner"></span>';
-        const records = await api.get(`/api/interviews?link_id=${linkId}`);
-        ivCache[linkId] = records;
-        if (!records.length) {
-          contentEl.innerHTML = '<div style="padding:8px 0;color:#bbb">暂无面试记录</div>';
-        } else {
-          const scored = records.filter(r => r.score);
-          const avgScore = scored.length ? (scored.reduce((s, r) => s + r.score, 0) / scored.length).toFixed(1) : null;
-          const avgHtml = avgScore ? `
-            <div style="margin-top:10px;padding:8px 0;border-top:1px solid #eee;font-size:13px;color:#555">
-              综合评分：${"★".repeat(Math.round(avgScore))}<span style="color:#ddd">${"★".repeat(5-Math.round(avgScore))}</span>
-              <span style="margin-left:6px;font-weight:600">${avgScore}</span>
-              <span style="color:#999;font-size:12px">（${scored.length}条记录）</span>
-            </div>` : "";
-          contentEl.innerHTML = `<table style="width:100%;border-collapse:collapse;margin-top:6px">
-            <thead><tr style="font-size:12px;color:#999;border-bottom:1px solid #eee">
-              <th style="padding:4px 8px;font-weight:500;text-align:left">轮次</th>
-              <th style="padding:4px 8px;font-weight:500;text-align:left">面试官</th>
-              <th style="padding:4px 8px;font-weight:500;text-align:left">时间</th>
-              <th style="padding:4px 8px;font-weight:500;text-align:left">评分</th>
-              <th style="padding:4px 8px;font-weight:500;text-align:left">结论</th>
-              <th style="padding:4px 8px;font-weight:500;text-align:left">评语</th>
-            </tr></thead>
-            <tbody>${records.map(r => `<tr style="font-size:13px;border-bottom:1px solid #f5f5f5">
-              <td style="padding:6px 8px">${r.round||"-"}</td>
-              <td style="padding:6px 8px;color:#555">${r.interviewer||"-"}</td>
-              <td style="padding:6px 8px;color:#888;font-size:12px">${r.interview_time ? formatTime(r.interview_time) : "-"}</td>
-              <td style="padding:6px 8px">${r.score ? "★".repeat(r.score) + '<span style="color:#ddd">' + "★".repeat(5-r.score) + "</span>" : "-"}</td>
-              <td style="padding:6px 8px">${r.conclusion ? `<span class="tag" style="font-size:11px;${r.conclusion==="通过"?"background:#dcfce7;color:#166534":r.conclusion==="淘汰"?"background:#fee2e2;color:#dc2626":"background:#fef9c3;color:#854d0e"}">${r.conclusion}</span>` : "-"}</td>
-              <td style="padding:6px 8px;color:#666;font-size:12px">${r.comment||"-"}</td>
-            </tr>`).join("")}</tbody>
-          </table>${avgHtml}`;
-        }
-      } else if (!isHidden && ivCache[linkId]) {
-        // 已缓存，直接显示（内容已在 DOM 中）
-      }
+  // 流程 tab：渲染时间轴
+  const pipelineTabCache = {};
+
+  async function renderPipelineTab() {
+    const container = document.getElementById("pipeline-tab-content");
+    if (!container) return;
+    const activeLink = (c.job_links || []).find(l => !l.outcome);
+    const inactiveLinks = (c.job_links || []).filter(l => l.outcome).sort((a,b) => (b.created_at||"").localeCompare(a.created_at||""));
+
+    if (!activeLink) {
+      container.innerHTML = `
+        <div class="card" style="text-align:center;padding:32px;color:#888">
+          暂无进行中的流程
+          <div style="margin-top:12px">
+            <button class="btn btn-primary btn-sm" id="new-link-btn">+ 新增投递</button>
+          </div>
+        </div>
+        ${inactiveLinks.length ? renderHistoryLinks(inactiveLinks) : ""}`;
+      document.getElementById("new-link-btn").onclick = openLinkJobOverlay;
+      bindHistoryExpand();
+      return;
+    }
+
+    const rounds = activeLink.interview_rounds || 1;
+    const stages = ["简历筛选", "电话初筛", ...Array.from({length: rounds}, (_,i) => `面试${rounds>1?i+1:""}`), "Offer", "已入职"];
+    const currentStageIdx = stages.indexOf(activeLink.stage);
+
+    let records = pipelineTabCache[activeLink.id];
+    if (!records) {
+      records = await api.get(`/api/interviews?link_id=${activeLink.id}`);
+      pipelineTabCache[activeLink.id] = records;
+    }
+
+    const scored = records.filter(r => r.score);
+    const avgScore = scored.length ? (scored.reduce((s,r)=>s+r.score,0)/scored.length).toFixed(1) : null;
+
+    const stageOptions = stages.map(s => `<option value="${s}" ${s===activeLink.stage?"selected":""}>${s}</option>`).join("");
+
+    container.innerHTML = `
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+          <span style="font-size:13px;color:#555;font-weight:600">${activeLink.job_title||"未知岗位"}</span>
+          <select id="tl-stage-select" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;background:#fff">${stageOptions}</select>
+          <button class="btn btn-secondary btn-sm" id="tl-add-round">+ 面试</button>
+          <button class="btn btn-secondary btn-sm" id="tl-remove-round" ${rounds<=1?"disabled":""}>- 面试</button>
+          <button class="btn btn-secondary btn-sm" id="tl-transfer-btn">转移岗位</button>
+          <button class="btn btn-danger btn-sm" id="tl-reject-btn">淘汰</button>
+        </div>
+        <div style="position:relative;padding-left:24px">
+          ${stages.map((stage, idx) => {
+            const isPast = currentStageIdx > idx;
+            const isCurrent = currentStageIdx === idx;
+            const isFuture = currentStageIdx < idx;
+            const stageRecords = records.filter(r => r.round && r.round.includes(stage.replace(/\d+$/,"")));
+            const dotColor = isPast ? "#4f46e5" : isCurrent ? "#4f46e5" : "#d1d5db";
+            const textColor = isFuture ? "#9ca3af" : "#1a1a2e";
+            return `
+              <div style="display:flex;gap:12px;margin-bottom:16px;position:relative">
+                <div style="position:absolute;left:-24px;top:4px;width:12px;height:12px;border-radius:50%;background:${dotColor};border:2px solid ${isCurrent?"#4f46e5":"transparent"};box-shadow:${isCurrent?"0 0 0 3px #e0e7ff":"none"}"></div>
+                ${idx < stages.length-1 ? `<div style="position:absolute;left:-19px;top:16px;width:2px;height:calc(100% + 4px);background:#e5e7eb"></div>` : ""}
+                <div style="flex:1">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-weight:${isCurrent?"700":"500"};font-size:14px;color:${textColor}">${stage}</span>
+                    ${isCurrent ? `<span class="tag" style="font-size:10px;background:#e0e7ff;color:#4f46e5">当前</span>` : ""}
+                    ${isCurrent ? `<button class="btn btn-secondary btn-sm tl-fill-iv-btn" data-link-id="${activeLink.id}" style="font-size:11px;padding:2px 8px">填写面评</button>` : ""}
+                  </div>
+                  ${stageRecords.map(r => `
+                    <div style="margin-top:6px;padding:8px 10px;background:#f9fafb;border-radius:6px;font-size:12px">
+                      ${r.score ? `<span style="color:#f59e0b">${"★".repeat(r.score)}<span style="color:#ddd">${"★".repeat(5-r.score)}</span></span> ` : ""}
+                      ${r.conclusion ? `<span class="tag" style="font-size:10px;${r.conclusion==="通过"?"background:#dcfce7;color:#166534":r.conclusion==="淘汰"?"background:#fee2e2;color:#dc2626":"background:#fef9c3;color:#854d0e"}">${r.conclusion}</span> ` : ""}
+                      ${r.comment ? `<span style="color:#666">${r.comment}</span>` : ""}
+                    </div>`).join("")}
+                </div>
+              </div>`;
+          }).join("")}
+        </div>
+        ${avgScore ? `<div style="margin-top:8px;padding-top:12px;border-top:1px solid #f0f0f0;font-size:13px;color:#555">综合评分均值：<strong>${avgScore}</strong> <span style="color:#f59e0b">${"★".repeat(Math.round(avgScore))}</span><span style="color:#ddd">${"★".repeat(5-Math.round(avgScore))}</span></div>` : ""}
+      </div>
+      ${inactiveLinks.length ? renderHistoryLinks(inactiveLinks) : ""}`;
+
+    // stage select
+    document.getElementById("tl-stage-select").onchange = async (e) => {
+      await api.patch(`/api/pipeline/link/${activeLink.id}/stage`, { stage: e.target.value });
+      showToast("阶段已更新", "success");
+      c.job_links = c.job_links.map(l => l.id === activeLink.id ? {...l, stage: e.target.value} : l);
+      renderPipelineTab();
     };
-  });
 
-  // 新增投递
-  document.getElementById("link-job-btn").onclick = async () => {
-    const jobs = await api.get("/api/jobs");
-    const overlay = document.getElementById("link-job-overlay");
-    const select = document.getElementById("link-job-select");
-    document.querySelector("#link-job-overlay h2").textContent = "新增投递";
-    select.innerHTML = jobs.map(j => `<option value="${j.id}">${j.title} @${String(j.id).padStart(3,"0")}</option>`).join("");
-    overlay.classList.remove("hidden");
-    document.getElementById("link-job-cancel").onclick = () => overlay.classList.add("hidden");
-    const linkJobConfirmBtn = document.getElementById("link-job-confirm");
-    linkJobConfirmBtn.onclick = () => withLoading(linkJobConfirmBtn, async () => {
-      const jobId = parseInt(select.value);
-      if (!jobId) return;
-      try {
-        await api.post("/api/pipeline/link", { candidate_id: parseInt(id), job_id: jobId });
-        overlay.classList.add("hidden");
-        renderCandidateProfile(el, id);
-      } catch (e) { /* toast already shown by api helper */ }
+    // +/- 面试轮次
+    document.getElementById("tl-add-round").onclick = async () => {
+      await api.patch(`/api/pipeline/link/${activeLink.id}/interview-rounds`, { interview_rounds: rounds + 1 });
+      c.job_links = c.job_links.map(l => l.id === activeLink.id ? {...l, interview_rounds: rounds+1} : l);
+      renderPipelineTab();
+    };
+    document.getElementById("tl-remove-round").onclick = async () => {
+      if (rounds <= 1) return;
+      await api.patch(`/api/pipeline/link/${activeLink.id}/interview-rounds`, { interview_rounds: rounds - 1 });
+      c.job_links = c.job_links.map(l => l.id === activeLink.id ? {...l, interview_rounds: rounds-1} : l);
+      renderPipelineTab();
+    };
+
+    // 填写面评
+    container.querySelectorAll(".tl-fill-iv-btn").forEach(btn => {
+      btn.onclick = () => {
+        const linkId = btn.dataset.linkId;
+        const ivOverlay = document.getElementById("interview-overlay");
+        ["iv-round","iv-interviewer","iv-time","iv-score","iv-conclusion","iv-comment"].forEach(id => { document.getElementById(id).value = ""; });
+        ivOverlay.classList.remove("hidden");
+        document.getElementById("iv-cancel").onclick = () => ivOverlay.classList.add("hidden");
+        const ivBtn = document.getElementById("iv-confirm");
+        ivBtn.onclick = () => withLoading(ivBtn, async () => {
+          await api.post(`/api/interviews`, {
+            link_id: parseInt(linkId),
+            round: document.getElementById("iv-round").value || null,
+            interviewer: document.getElementById("iv-interviewer").value || null,
+            interview_time: document.getElementById("iv-time").value || null,
+            score: parseInt(document.getElementById("iv-score").value) || null,
+            comment: document.getElementById("iv-comment").value || null,
+            conclusion: document.getElementById("iv-conclusion").value || null,
+          });
+          ivOverlay.classList.add("hidden");
+          delete pipelineTabCache[activeLink.id];
+          showToast("面试记录已保存", "success");
+          renderPipelineTab();
+        });
+      };
     });
-  };
 
-  // 转移岗位
-  document.querySelectorAll(".transfer-btn").forEach(btn => {
-    btn.onclick = async () => {
-      const linkId = btn.dataset.linkId;
+    // 转移岗位
+    document.getElementById("tl-transfer-btn").onclick = async () => {
       const jobs = await api.get("/api/jobs");
       const overlay = document.getElementById("link-job-overlay");
       const select = document.getElementById("link-job-select");
@@ -794,33 +809,117 @@ async function renderCandidateProfile(el, id) {
       select.innerHTML = jobs.map(j => `<option value="${j.id}">${j.title} @${String(j.id).padStart(3,"0")}</option>`).join("");
       overlay.classList.remove("hidden");
       document.getElementById("link-job-cancel").onclick = () => overlay.classList.add("hidden");
-      const transferConfirmBtn = document.getElementById("link-job-confirm");
-      transferConfirmBtn.onclick = () => withLoading(transferConfirmBtn, async () => {
+      const confirmBtn = document.getElementById("link-job-confirm");
+      confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
         const newJobId = parseInt(select.value);
         if (!newJobId) return;
         overlay.classList.add("hidden");
-        await api.patch(`/api/pipeline/link/${linkId}/outcome`, { outcome: "withdrawn" });
+        await api.patch(`/api/pipeline/link/${activeLink.id}/outcome`, { outcome: "withdrawn" });
         await api.post("/api/pipeline/link", { candidate_id: parseInt(id), job_id: newJobId });
         renderCandidateProfile(el, id);
       });
     };
-  });
 
-  // 投递记录淘汰
-  document.querySelectorAll(".reject-link-btn").forEach(btn => {
-    btn.onclick = () => {
-      const linkId = btn.dataset.linkId;
+    // 淘汰
+    document.getElementById("tl-reject-btn").onclick = () => {
       const rejectOverlay = document.getElementById("reject-overlay");
+      document.getElementById("reject-reason-select").value = "";
       rejectOverlay.classList.remove("hidden");
       document.getElementById("reject-cancel").onclick = () => rejectOverlay.classList.add("hidden");
       const rejectConfirmBtn = document.getElementById("reject-confirm");
       rejectConfirmBtn.onclick = () => withLoading(rejectConfirmBtn, async () => {
         const reason = document.getElementById("reject-reason-select").value;
         rejectOverlay.classList.add("hidden");
-        await api.patch(`/api/pipeline/link/${linkId}/outcome`, { outcome: "rejected", rejection_reason: reason });
+        await api.patch(`/api/pipeline/link/${activeLink.id}/outcome`, { outcome: "rejected", rejection_reason: reason });
         renderCandidateProfile(el, id);
       });
     };
+
+    bindHistoryExpand();
+  }
+
+  function renderHistoryLinks(links) {
+    return `<div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:12px 16px;background:#f9fafb;border-bottom:1px solid #e5e7eb;font-weight:600;font-size:13px;color:#555;cursor:pointer;display:flex;justify-content:space-between" id="history-links-toggle">
+        历史流程（${links.length}）<span id="history-links-arrow">▶</span>
+      </div>
+      <div id="history-links-body" style="display:none">
+        ${links.map(lnk => {
+          const label = lnk.outcome === "rejected" ? "淘汰" + (lnk.rejection_reason ? "（"+lnk.rejection_reason+"）" : "") : "已退出";
+          return `<div style="padding:10px 16px;border-bottom:1px solid #f3f4f6">
+            <div style="display:flex;align-items:center;gap:8px;cursor:pointer" class="hist-link-row" data-link-id="${lnk.id}">
+              <span style="font-weight:600;font-size:13px">${lnk.job_title||"未知岗位"}</span>
+              <span class="tag" style="font-size:10px">${lnk.stage||"-"}</span>
+              <span class="tag" style="font-size:10px;background:#fee2e2;color:#dc2626">${label}</span>
+              <span style="font-size:12px;color:#bbb;margin-left:auto">${formatTime(lnk.created_at)}</span>
+              <span class="hist-arrow" style="color:#bbb;font-size:11px">▶</span>
+            </div>
+            <div class="hist-iv-detail" id="hist-iv-${lnk.id}" style="display:none;margin-top:8px;padding-left:8px"></div>
+          </div>`;
+        }).join("")}
+      </div>
+    </div>`;
+  }
+
+  function bindHistoryExpand() {
+    const toggle = document.getElementById("history-links-toggle");
+    if (toggle) {
+      toggle.onclick = () => {
+        const body = document.getElementById("history-links-body");
+        const arrow = document.getElementById("history-links-arrow");
+        const open = body.style.display === "none";
+        body.style.display = open ? "" : "none";
+        arrow.textContent = open ? "▼" : "▶";
+      };
+    }
+    document.querySelectorAll(".hist-link-row").forEach(row => {
+      row.onclick = async () => {
+        const linkId = row.dataset.linkId;
+        const detail = document.getElementById(`hist-iv-${linkId}`);
+        const arrow = row.querySelector(".hist-arrow");
+        const open = detail.style.display === "none";
+        detail.style.display = open ? "" : "none";
+        arrow.textContent = open ? "▼" : "▶";
+        if (open && !detail.dataset.loaded) {
+          detail.dataset.loaded = "1";
+          detail.innerHTML = '<span class="spinner"></span>';
+          const records = await api.get(`/api/interviews?link_id=${linkId}`);
+          if (!records.length) { detail.innerHTML = '<span style="color:#bbb;font-size:12px">暂无面评</span>'; return; }
+          detail.innerHTML = records.map(r => `<div style="font-size:12px;padding:4px 0;color:#555">
+            ${r.round||"面试"} ${r.score?"★".repeat(r.score):""} ${r.conclusion||""} ${r.comment?`· ${r.comment}`:""}
+          </div>`).join("");
+        }
+      };
+    });
+  }
+
+  function openLinkJobOverlay() {
+    api.get("/api/jobs").then(jobs => {
+      const overlay = document.getElementById("link-job-overlay");
+      const select = document.getElementById("link-job-select");
+      document.querySelector("#link-job-overlay h2").textContent = "新增投递";
+      select.innerHTML = jobs.map(j => `<option value="${j.id}">${j.title} @${String(j.id).padStart(3,"0")}</option>`).join("");
+      overlay.classList.remove("hidden");
+      document.getElementById("link-job-cancel").onclick = () => overlay.classList.add("hidden");
+      const confirmBtn = document.getElementById("link-job-confirm");
+      confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
+        const jobId = parseInt(select.value);
+        if (!jobId) return;
+        try {
+          await api.post("/api/pipeline/link", { candidate_id: parseInt(id), job_id: jobId });
+          overlay.classList.add("hidden");
+          renderCandidateProfile(el, id);
+        } catch (e) { /* toast shown */ }
+      });
+    });
+  }
+
+  // trigger pipeline tab load when tab is clicked
+  document.querySelectorAll(".profile-tab-btn").forEach(btn => {
+    if (btn.dataset.tab === "pipeline") {
+      const origOnclick = btn.onclick;
+      btn.addEventListener("click", () => { setTimeout(renderPipelineTab, 0); });
+    }
   });
 }
 
@@ -840,6 +939,48 @@ async function renderPipelineTracking(el) {
   const links = await api.get("/api/pipeline/active");
   const contentEl = document.getElementById("pt-content");
   if (!contentEl) return;
+
+  // tooltip cache & state
+  const ivCache = {};
+  let tooltipTimer = null;
+  let tooltipEl = null;
+
+  function showTooltip(anchorEl, linkId) {
+    if (!tooltipEl) {
+      tooltipEl = document.createElement("div");
+      tooltipEl.id = "pt-tooltip";
+      tooltipEl.style.cssText = "position:fixed;z-index:9000;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;box-shadow:0 4px 16px rgba(0,0,0,0.12);font-size:12px;max-width:260px;pointer-events:none";
+      document.body.appendChild(tooltipEl);
+    }
+    tooltipEl.innerHTML = '<span class="spinner" style="font-size:11px">加载中...</span>';
+    tooltipEl.style.display = "block";
+    const rect = anchorEl.getBoundingClientRect();
+    tooltipEl.style.left = (rect.right + 8) + "px";
+    tooltipEl.style.top = rect.top + "px";
+
+    const render = (records) => {
+      if (!records.length) { tooltipEl.innerHTML = '<span style="color:#888">暂无面评</span>'; return; }
+      const scores = records.filter(r => r.score).map(r => r.score);
+      const avg = scores.length ? (scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1) : null;
+      tooltipEl.innerHTML = records.map(r => `
+        <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #f3f4f6">
+          <div style="font-weight:600;color:#1a1a2e">${r.round || "面试"}${r.score ? ` ${"★".repeat(r.score)}${"☆".repeat(5-r.score)}` : ""}</div>
+          ${r.conclusion ? `<div style="color:#555">${r.conclusion}</div>` : ""}
+          ${r.comment ? `<div style="color:#888;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px">${r.comment}</div>` : ""}
+        </div>`).join("") + (avg ? `<div style="font-weight:600;color:#4f46e5">综合评分：${avg}</div>` : "");
+    };
+
+    if (ivCache[linkId]) { render(ivCache[linkId]); return; }
+    api.get(`/api/interviews?link_id=${linkId}`).then(data => {
+      ivCache[linkId] = data;
+      if (tooltipEl.style.display !== "none") render(data);
+    });
+  }
+
+  function hideTooltip() {
+    if (tooltipEl) tooltipEl.style.display = "none";
+    clearTimeout(tooltipTimer);
+  }
 
   let groupMode = "job"; // "job" | "stage"
 
@@ -883,13 +1024,14 @@ async function renderPipelineTracking(el) {
   function renderRow(l, showJob) {
     const days = l.days_since_update !== null ? (l.days_since_update === 0 ? "今天" : `${l.days_since_update}天前`) : "-";
     const stages = l.job_stages || [];
+    const starTag = l.starred ? `<span style="color:#f59e0b;font-size:13px;margin-right:2px">★</span>` : "";
     const stageCell = showJob
       ? `<td><select class="pt-stage-select" data-link-id="${l.id}" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;background:#fff">
           ${stages.map(s => `<option value="${s}" ${s === l.stage ? "selected" : ""}>${s}</option>`).join("")}
          </select></td>`
       : `<td style="color:#555;font-size:13px">${l.job_title || "-"}</td>`;
     return `<tr data-link-id="${l.id}">
-      <td><a href="#/candidates/${l.candidate_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${l.candidate_name || "-"}</a></td>
+      <td>${starTag}<span class="pt-name-span" data-link-id="${l.id}" style="font-weight:600;color:#1a1a2e;cursor:pointer"><a href="#/candidates/${l.candidate_id}" style="color:inherit;text-decoration:none">${l.candidate_name || "-"}</a></span></td>
       ${stageCell}
       <td style="color:#888;font-size:13px">${days}</td>
       <td><div style="display:flex;gap:4px">
@@ -916,6 +1058,14 @@ async function renderPipelineTracking(el) {
         </table>
       </div>`).join("");
     contentEl.querySelectorAll(".pt-reject-btn").forEach(bindRejectBtn);
+    // tooltip hover
+    contentEl.querySelectorAll(".pt-name-span").forEach(span => {
+      span.addEventListener("mouseenter", () => {
+        clearTimeout(tooltipTimer);
+        tooltipTimer = setTimeout(() => showTooltip(span, span.dataset.linkId), 200);
+      });
+      span.addEventListener("mouseleave", hideTooltip);
+    });
     contentEl.querySelectorAll(".pt-stage-select").forEach(sel => {
       sel.onchange = async () => {
         await api.patch(`/api/pipeline/link/${sel.dataset.linkId}/stage`, { stage: sel.value });
@@ -1005,12 +1155,7 @@ async function renderTalentPool(el) {
     </div>
     <div class="filter-bar" style="margin-bottom:16px">
       <input id="tp-search" type="text" placeholder="搜索姓名、手机、邮箱..." style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none">
-      <select id="tp-followup" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
-        <option value="">全部跟进状态</option>
-        <option value="待跟进">待跟进</option>
-        <option value="已联系">已联系</option>
-        <option value="暂不考虑">暂不考虑</option>
-      </select>
+      <button id="tp-starred-btn" class="btn btn-secondary" style="white-space:nowrap">☆ 只看星标</button>
       <select id="tp-source" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
         <option value="">全部来源</option>
       </select>
@@ -1022,15 +1167,16 @@ async function renderTalentPool(el) {
 
   const followupColor = { "待跟进": "background:#fef9c3;color:#854d0e", "已联系": "background:#dcfce7;color:#166534", "暂不考虑": "background:#f3f4f6;color:#6b7280" };
 
+  let starredOnly = _talentStarredOnly;
+
   const loadTalent = async () => {
     const q = document.getElementById("tp-search")?.value || "";
-    const followup = document.getElementById("tp-followup")?.value || "";
     const source = document.getElementById("tp-source")?.value || "";
 
     const params = new URLSearchParams();
     if (q) params.set("q", q);
-    if (followup) params.set("followup_status", followup);
     if (source) params.set("source", source);
+    if (starredOnly) params.set("starred", "true");
 
     const candidates = await api.get(`/api/candidates${params.toString() ? "?" + params.toString() : ""}`);
     const tableEl = document.getElementById("tp-table");
@@ -1052,28 +1198,19 @@ async function renderTalentPool(el) {
     }
 
     tableEl.innerHTML = `<table class="table">
-      <thead><tr><th>姓名</th><th>技能标签</th><th>跟进状态</th><th>当前岗位·阶段</th><th>来源</th><th>操作</th></tr></thead>
+      <thead><tr><th>姓名</th><th>技能标签</th><th>当前岗位·阶段</th><th>来源</th><th>操作</th></tr></thead>
       <tbody>${candidates.map(c => {
         const tags = (c.skill_tags || []).slice(0, 3).map(t => `<span class="tag">${t}</span>`).join(" ");
-        const fs = c.followup_status;
-        const fsTag = fs ? `<span class="tag" style="${followupColor[fs] || ""}">${fs}</span>` : "-";
         const activeLinks = c.active_links || [];
         const activeStage = activeLinks.length
           ? activeLinks.map(l => `<div style="font-size:12px;color:#555">${l.job_title || ""}${l.stage ? " · " + l.stage : ""}</div>`).join("")
           : "-";
+        const starBtn = `<button class="tp-star-btn" data-id="${c.id}" data-starred="${c.starred ? '1' : '0'}" style="background:none;border:none;cursor:pointer;font-size:16px;padding:0 4px;color:${c.starred ? '#f59e0b' : '#ccc'}" title="${c.starred ? '取消星标' : '标记星标'}">${c.starred ? '★' : '☆'}</button>`;
         return `<tr>
-          <td><a href="#/candidates/${c.id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${c.name}</a>
+          <td style="display:flex;align-items:center;gap:4px">${starBtn}<a href="#/candidates/${c.id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${c.name}</a>
             ${c.last_title ? `<div style="font-size:12px;color:#888">${c.last_title}${c.last_company ? " @ " + c.last_company : ""}</div>` : ""}
           </td>
           <td>${tags || "-"}</td>
-          <td>
-            <select class="tp-followup-select" data-id="${c.id}" style="font-size:12px;padding:3px 6px;border:1px solid #ddd;border-radius:6px;background:#f9f9f9">
-              <option value="" ${!fs ? "selected" : ""}>未设置</option>
-              <option value="待跟进" ${fs === "待跟进" ? "selected" : ""}>待跟进</option>
-              <option value="已联系" ${fs === "已联系" ? "selected" : ""}>已联系</option>
-              <option value="暂不考虑" ${fs === "暂不考虑" ? "selected" : ""}>暂不考虑</option>
-            </select>
-          </td>
           <td>${activeStage}</td>
           <td>${c.source || "-"}</td>
           <td>
@@ -1086,10 +1223,16 @@ async function renderTalentPool(el) {
       }).join("")}
       </tbody></table>`;
 
-    // 跟进状态内联修改
-    tableEl.querySelectorAll(".tp-followup-select").forEach(sel => {
-      sel.onchange = async () => {
-        await api.patch(`/api/candidates/${sel.dataset.id}`, { followup_status: sel.value || null });
+    // 星标切换
+    tableEl.querySelectorAll(".tp-star-btn").forEach(btn => {
+      btn.onclick = async () => {
+        const id = btn.dataset.id;
+        const newStarred = btn.dataset.starred !== "1";
+        await api.patch(`/api/candidates/${id}`, { starred: newStarred });
+        btn.dataset.starred = newStarred ? "1" : "0";
+        btn.textContent = newStarred ? "★" : "☆";
+        btn.style.color = newStarred ? "#f59e0b" : "#ccc";
+        if (starredOnly && !newStarred) btn.closest("tr").remove();
       };
     });
 
@@ -1119,8 +1262,21 @@ async function renderTalentPool(el) {
 
   let timer;
   document.getElementById("tp-search").oninput = () => { clearTimeout(timer); timer = setTimeout(loadTalent, 300); };
-  document.getElementById("tp-followup").onchange = loadTalent;
   document.getElementById("tp-source").onchange = loadTalent;
+  document.getElementById("tp-starred-btn").onclick = () => {
+    starredOnly = !starredOnly;
+    _talentStarredOnly = starredOnly;
+    const btn = document.getElementById("tp-starred-btn");
+    btn.textContent = starredOnly ? "★ 只看星标" : "☆ 只看星标";
+    btn.className = starredOnly ? "btn btn-primary" : "btn btn-secondary";
+    loadTalent();
+  };
+  // restore button state if starredOnly was already true
+  if (starredOnly) {
+    const btn = document.getElementById("tp-starred-btn");
+    btn.textContent = "★ 只看星标";
+    btn.className = "btn btn-primary";
+  }
 }
 
 // ── Dedup Panel ───────────────────────────────────────────────────────────────
