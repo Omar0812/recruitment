@@ -36,6 +36,34 @@
     </div>
   </div>
 
+  <!-- 看板备注弹窗 -->
+  <div id="note-overlay" class="modal-overlay hidden">
+    <div class="modal" style="max-width:360px">
+      <h2>添加备注</h2>
+      <div class="form-group" style="margin-top:12px">
+        <textarea id="note-input" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px;min-height:80px;box-sizing:border-box"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button id="note-cancel" class="btn btn-secondary">取消</button>
+        <button id="note-confirm" class="btn btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 关联岗位弹窗 -->
+  <div id="link-job-overlay" class="modal-overlay hidden">
+    <div class="modal" style="max-width:360px">
+      <h2>关联岗位</h2>
+      <div class="form-group" style="margin-top:12px">
+        <select id="link-job-select" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px"></select>
+      </div>
+      <div class="modal-actions">
+        <button id="link-job-cancel" class="btn btn-secondary">取消</button>
+        <button id="link-job-confirm" class="btn btn-primary">确认关联</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/app.js"></script>
 </body>
 </html>

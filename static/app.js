@@ -271,7 +271,10 @@ async function renderCandidateProfile(el, id) {
           <p>${[c.last_title, c.last_company].filter(Boolean).join(" @ ") || "暂无工作信息"}</p>
           <p style="margin-top:4px">${(c.skill_tags || []).map(t => `<span class="tag">${t}</span>`).join("")}</p>
         </div>
-        ${c.resume_path ? `<a href="/resumes/${encodeURIComponent(c.resume_path.split('/').slice(-2).join('/'))}" target="_blank" class="btn btn-secondary btn-sm" style="margin-left:auto">查看简历</a>` : ""}
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-start">
+          ${c.resume_path ? `<a href="/resumes/${encodeURIComponent(c.resume_path.split('/').slice(-2).join('/'))}" target="_blank" class="btn btn-secondary btn-sm">查看简历</a>` : ""}
+          <button class="btn btn-secondary btn-sm" id="edit-info-btn">编辑信息</button>
+        </div>
       </div>
       <div class="form-grid">
         ${[
@@ -321,12 +324,68 @@ async function renderCandidateProfile(el, id) {
     alert("备注已保存");
   };
 
+  document.getElementById("edit-info-btn").onclick = () => {
+    const overlay = document.getElementById("modal-overlay");
+    const body = document.getElementById("modal-body");
+    document.querySelector("#modal-overlay h2").textContent = "编辑候选人信息";
+    body.innerHTML = `
+      <div class="form-grid">
+        <div class="form-group"><label>姓名</label><input id="e-name" value="${c.name || ""}"></div>
+        <div class="form-group"><label>手机</label><input id="e-phone" value="${c.phone || ""}"></div>
+        <div class="form-group"><label>邮箱</label><input id="e-email" value="${c.email || ""}"></div>
+        <div class="form-group"><label>年龄</label><input id="e-age" type="number" value="${c.age || ""}"></div>
+        <div class="form-group"><label>学历</label><input id="e-education" value="${c.education || ""}"></div>
+        <div class="form-group"><label>毕业院校</label><input id="e-school" value="${c.school || ""}"></div>
+        <div class="form-group"><label>城市</label><input id="e-city" value="${c.city || ""}"></div>
+        <div class="form-group"><label>上家公司</label><input id="e-last-company" value="${c.last_company || ""}"></div>
+        <div class="form-group"><label>上家职位</label><input id="e-last-title" value="${c.last_title || ""}"></div>
+        <div class="form-group"><label>工作年限</label><input id="e-years-exp" type="number" value="${c.years_exp || ""}"></div>
+        <div class="form-group form-full"><label>技能标签（逗号分隔）</label><input id="e-tags" value="${(c.skill_tags || []).join(", ")}"></div>
+        <div class="form-group"><label>来源渠道</label><input id="e-source" value="${c.source || ""}"></div>
+      </div>`;
+    overlay.classList.remove("hidden");
+
+    document.getElementById("modal-cancel").onclick = () => {
+      overlay.classList.add("hidden");
+      document.querySelector("#modal-overlay h2").textContent = "确认候选人信息";
+    };
+    document.getElementById("modal-save").onclick = async () => {
+      const tags = document.getElementById("e-tags").value.split(",").map(s => s.trim()).filter(Boolean);
+      await api.patch(`/api/candidates/${id}`, {
+        name: document.getElementById("e-name").value,
+        phone: document.getElementById("e-phone").value || null,
+        email: document.getElementById("e-email").value || null,
+        age: parseInt(document.getElementById("e-age").value) || null,
+        education: document.getElementById("e-education").value || null,
+        school: document.getElementById("e-school").value || null,
+        city: document.getElementById("e-city").value || null,
+        last_company: document.getElementById("e-last-company").value || null,
+        last_title: document.getElementById("e-last-title").value || null,
+        years_exp: parseInt(document.getElementById("e-years-exp").value) || null,
+        skill_tags: tags,
+        source: document.getElementById("e-source").value || null,
+      });
+      overlay.classList.add("hidden");
+      document.querySelector("#modal-overlay h2").textContent = "确认候选人信息";
+      renderCandidateProfile(el, id);
+    };
+  };
+
   document.getElementById("link-job-btn").onclick = async () => {
     const jobs = await api.get("/api/jobs");
-    const jobId = prompt("选择岗位ID:\n" + jobs.map(j => `${j.id}: ${j.title}`).join("\n"));
-    if (!jobId) return;
-    await api.post("/api/pipeline/link", { candidate_id: parseInt(id), job_id: parseInt(jobId) });
-    renderCandidateProfile(el, id);
+    const overlay = document.getElementById("link-job-overlay");
+    const select = document.getElementById("link-job-select");
+    select.innerHTML = jobs.map(j => `<option value="${j.id}">${j.title}</option>`).join("");
+    overlay.classList.remove("hidden");
+
+    document.getElementById("link-job-cancel").onclick = () => overlay.classList.add("hidden");
+    document.getElementById("link-job-confirm").onclick = async () => {
+      const jobId = parseInt(select.value);
+      if (!jobId) return;
+      overlay.classList.add("hidden");
+      await api.post("/api/pipeline/link", { candidate_id: parseInt(id), job_id: jobId });
+      renderCandidateProfile(el, id);
+    };
   };
 }
 
@@ -457,11 +516,11 @@ async function renderPipeline(el, jobId) {
         </div>`).join("")}
     </div>`;
 
-  el.querySelectorAll(".move-stage-btn").forEach(btn => {
-    btn.onclick = async (e) => {
+  el.querySelectorAll(".move-stage-select").forEach(sel => {
+    sel.onchange = async (e) => {
       e.stopPropagation();
-      const linkId = btn.dataset.linkId;
-      const stage = btn.dataset.stage;
+      const linkId = sel.dataset.linkId;
+      const stage = sel.value;
       await api.patch(`/api/pipeline/link/${linkId}/stage`, { stage });
       renderPipeline(el, jobId);
     };
@@ -479,28 +538,59 @@ async function renderPipeline(el, jobId) {
   el.querySelectorAll(".note-btn").forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
-      const note = prompt("添加备注：");
-      if (note === null) return;
-      await api.patch(`/api/pipeline/link/${btn.dataset.linkId}/notes`, { notes: note });
-      renderPipeline(el, jobId);
+      const overlay = document.getElementById("note-overlay");
+      const input = document.getElementById("note-input");
+      input.value = "";
+      overlay.classList.remove("hidden");
+      input.focus();
+
+      document.getElementById("note-cancel").onclick = () => overlay.classList.add("hidden");
+      document.getElementById("note-confirm").onclick = async () => {
+        overlay.classList.add("hidden");
+        await api.patch(`/api/pipeline/link/${btn.dataset.linkId}/notes`, { notes: input.value });
+        renderPipeline(el, jobId);
+      };
     };
+  });
+
+  // drag-and-drop
+  let dragLinkId = null;
+  el.querySelectorAll(".kanban-card").forEach(card => {
+    card.addEventListener("dragstart", (e) => {
+      dragLinkId = card.dataset.linkId;
+      card.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    card.addEventListener("dragend", () => card.classList.remove("dragging"));
+  });
+
+  el.querySelectorAll(".kanban-col").forEach(col => {
+    col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drag-over"); });
+    col.addEventListener("dragleave", () => col.classList.remove("drag-over"));
+    col.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      col.classList.remove("drag-over");
+      const stage = col.dataset.stage;
+      if (!dragLinkId) return;
+      await api.patch(`/api/pipeline/link/${dragLinkId}/stage`, { stage });
+      renderPipeline(el, jobId);
+    });
   });
 }
 
 function renderCard(lnk, stages) {
-  const stageOptions = stages.map(s => `<button class="btn btn-secondary btn-sm move-stage-btn" data-link-id="${lnk.id}" data-stage="${s}">${s}</button>`).join("");
+  const stageOptions = stages.map(s => `<option value="${s}" ${s === lnk.stage ? "selected" : ""}>${s}</option>`).join("");
   const lastUpdate = lnk.days_since_update !== null ? (lnk.days_since_update === 0 ? "今天" : `${lnk.days_since_update}天前`) : "";
   return `
-    <div class="kanban-card">
+    <div class="kanban-card" draggable="true" data-link-id="${lnk.id}" data-stage="${lnk.stage}">
       <div class="card-name"><a href="#/candidates/${lnk.candidate_id}" style="color:inherit;text-decoration:none">${lnk.candidate_name}</a></div>
       <div class="card-meta">${lastUpdate ? `🕐 ${lastUpdate}` : ""}${lnk.notes ? ` 📝 ${lnk.notes}` : ""}</div>
       <div class="card-actions">
-        <button class="btn btn-secondary btn-sm note-btn" data-link-id="${lnk.id}">备注</button>
-        <button class="btn btn-danger btn-sm reject-btn" data-link-id="${lnk.id}">淘汰</button>
+        <select class="move-stage-select" data-link-id="${lnk.id}" style="flex:1;font-size:12px;padding:3px 6px;border:1px solid #ddd;border-radius:6px;background:#f9f9f9">${stageOptions}</select>
       </div>
       <div class="card-actions" style="margin-top:4px">
-        <span style="font-size:12px;color:#999">移至：</span>
-        ${stageOptions}
+        <button class="btn btn-secondary btn-sm note-btn" data-link-id="${lnk.id}">备注</button>
+        <button class="btn btn-danger btn-sm reject-btn" data-link-id="${lnk.id}">淘汰</button>
       </div>
     </div>`;
 }
