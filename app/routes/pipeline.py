@@ -56,11 +56,11 @@ def link_candidate(data: LinkCreate, db: Session = Depends(get_db)):
 
     existing = db.query(CandidateJobLink).filter(
         CandidateJobLink.candidate_id == data.candidate_id,
-        CandidateJobLink.job_id == data.job_id,
         CandidateJobLink.outcome.is_(None),
     ).first()
     if existing:
-        raise HTTPException(status_code=400, detail="该候选人已在此岗位流程中")
+        current_job = existing.job.title if existing.job else f"岗位#{existing.job_id}"
+        raise HTTPException(status_code=400, detail=f"该候选人已在「{current_job}」流程中，请先结束再投递新岗位")
 
     stage = data.stage or (job.stages[0] if job.stages else "简历筛选")
     lnk = CandidateJobLink(candidate_id=data.candidate_id, job_id=data.job_id, stage=stage)
@@ -166,3 +166,45 @@ def get_pipeline(job_id: int, db: Session = Depends(get_db)):
         else:
             unmatched.append(link_to_dict(lnk))
     return {"stages": stages, "pipeline": pipeline, "unmatched": unmatched}
+
+
+@router.get("/analytics")
+def get_analytics(db: Session = Depends(get_db)):
+    """返回数据分析所需的聚合数据"""
+    all_links = db.query(CandidateJobLink).join(Candidate).filter(
+        Candidate.deleted_at.is_(None)
+    ).all()
+
+    # 各阶段人数（活跃）
+    stage_counts = {}
+    for lnk in all_links:
+        if lnk.outcome is None and lnk.stage:
+            stage_counts[lnk.stage] = stage_counts.get(lnk.stage, 0) + 1
+
+    # 岗位汇总
+    job_stats = {}
+    for lnk in all_links:
+        jid = lnk.job_id
+        title = lnk.job.title if lnk.job else f"岗位#{jid}"
+        if jid not in job_stats:
+            job_stats[jid] = {"title": title, "total": 0, "active": 0, "rejected": 0, "offer": 0}
+        job_stats[jid]["total"] += 1
+        if lnk.outcome is None:
+            job_stats[jid]["active"] += 1
+            if lnk.stage and "offer" in lnk.stage.lower():
+                job_stats[jid]["offer"] += 1
+        elif lnk.outcome == "rejected":
+            job_stats[jid]["rejected"] += 1
+
+    # 淘汰原因分布
+    rejection_reasons = {}
+    for lnk in all_links:
+        if lnk.outcome == "rejected":
+            reason = lnk.rejection_reason or "未填写"
+            rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
+
+    return {
+        "stage_counts": stage_counts,
+        "job_stats": list(job_stats.values()),
+        "rejection_reasons": rejection_reasons,
+    }
