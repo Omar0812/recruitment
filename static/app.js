@@ -782,6 +782,7 @@ async function renderTalentPool(el) {
       <select id="tp-source" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
         <option value="">全部来源</option>
       </select>
+      <button class="btn btn-secondary" onclick="openDedupPanel()">查重</button>
     </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div id="tp-table"><span class="spinner" style="margin:24px"></span></div>
@@ -885,6 +886,70 @@ async function renderTalentPool(el) {
   document.getElementById("tp-search").oninput = () => { clearTimeout(timer); timer = setTimeout(loadTalent, 300); };
   document.getElementById("tp-followup").onchange = loadTalent;
   document.getElementById("tp-source").onchange = loadTalent;
+}
+
+// ── Dedup Panel ───────────────────────────────────────────────────────────────
+async function openDedupPanel() {
+  const overlay = document.getElementById("dedup-overlay");
+  const content = document.getElementById("dedup-content");
+  overlay.classList.remove("hidden");
+  document.getElementById("dedup-close").onclick = () => overlay.classList.add("hidden");
+
+  content.innerHTML = '<span class="spinner" style="margin:24px auto;display:block"></span>';
+
+  const { pairs } = await api.get("/api/candidates/dedup/scan");
+
+  if (!pairs.length) {
+    content.innerHTML = '<div class="empty-state" style="padding:32px">未发现重复候选人</div>';
+    return;
+  }
+
+  content.innerHTML = pairs.map((pair, idx) => `
+    <div class="dedup-pair" id="dedup-pair-${idx}" style="border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:16px">
+      <div style="font-size:12px;color:#888;margin-bottom:10px">重复原因：${pair.reason}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        ${[pair.a, pair.b].map(c => `
+          <label style="border:2px solid #e5e7eb;border-radius:8px;padding:12px;cursor:pointer;display:block">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <input type="radio" name="dedup-primary-${idx}" value="${c.id}" style="accent-color:#4f46e5">
+              <span style="font-weight:600">${c.name || "-"}</span>
+              <span style="font-size:12px;color:#888">${c.display_id}</span>
+            </div>
+            <div style="font-size:12px;color:#555;line-height:1.6">
+              ${c.phone ? `📱 ${c.phone}<br>` : ""}
+              ${c.email ? `✉️ ${c.email}<br>` : ""}
+              ${c.last_title ? `💼 ${c.last_title}${c.last_company ? " @ " + c.last_company : ""}` : ""}
+            </div>
+          </label>`).join("")}
+      </div>
+      <div style="margin-top:12px;text-align:right">
+        <button class="btn btn-primary btn-sm" onclick="mergeCandidate(${idx}, ${pair.a.id}, ${pair.b.id})">合并</button>
+      </div>
+    </div>`).join("");
+}
+
+async function mergeCandidate(pairIdx, idA, idB) {
+  const radios = document.querySelectorAll(`input[name="dedup-primary-${pairIdx}"]`);
+  let primaryId = null;
+  radios.forEach(r => { if (r.checked) primaryId = parseInt(r.value); });
+  if (!primaryId) { alert("请先选择主档案"); return; }
+  const secondaryId = primaryId === idA ? idB : idA;
+
+  await api.post("/api/candidates/dedup/merge", { primary_id: primaryId, secondary_id: secondaryId });
+
+  // 移除该重复对
+  const pairEl = document.getElementById(`dedup-pair-${pairIdx}`);
+  if (pairEl) pairEl.remove();
+
+  // 检查是否还有剩余
+  const remaining = document.querySelectorAll(".dedup-pair");
+  if (!remaining.length) {
+    document.getElementById("dedup-content").innerHTML = '<div class="empty-state" style="padding:32px">未发现重复候选人</div>';
+  }
+
+  // 刷新人才库列表（如果当前在人才库页面）
+  const mainEl = document.getElementById("main");
+  if (mainEl && location.hash.includes("talent")) renderTalentPool(mainEl);
 }
 
 // ── Job List ──────────────────────────────────────────────────────────────────

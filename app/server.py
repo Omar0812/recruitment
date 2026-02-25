@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app.database import engine
 from app import models
-from app.routes import candidates, resume, jobs, pipeline, dashboard, interviews
+from app.routes import candidates, resume, jobs, pipeline, dashboard, interviews, dedup
 
 models.Base.metadata.create_all(bind=engine)
 Path("data/resumes").mkdir(parents=True, exist_ok=True)
@@ -21,6 +21,8 @@ with engine.connect() as conn:
     for stmt in (
         "ALTER TABLE candidate_job_links ADD COLUMN rejection_reason VARCHAR",
         "ALTER TABLE candidates ADD COLUMN followup_status VARCHAR",
+        "ALTER TABLE candidates ADD COLUMN merged_into INTEGER",
+        "ALTER TABLE candidates ADD COLUMN deleted_at DATETIME",
         """CREATE TABLE IF NOT EXISTS interview_records (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           link_id INTEGER NOT NULL REFERENCES candidate_job_links(id) ON DELETE CASCADE,
@@ -43,6 +45,7 @@ app.include_router(jobs.router)
 app.include_router(pipeline.router)
 app.include_router(dashboard.router)
 app.include_router(interviews.router)
+app.include_router(dedup.router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/resumes", StaticFiles(directory="data/resumes"), name="resumes")

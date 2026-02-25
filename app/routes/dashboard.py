@@ -17,8 +17,10 @@ def get_summary(db: Session = Depends(get_db)):
     # 超时未跟进候选人
     stale_links = (
         db.query(CandidateJobLink)
+        .join(Candidate)
         .filter(CandidateJobLink.outcome.is_(None))
         .filter(CandidateJobLink.updated_at < stale_threshold)
+        .filter(Candidate.deleted_at.is_(None))
         .all()
     )
     stale_candidates = [

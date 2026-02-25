@@ -148,7 +148,7 @@ def list_candidates(
     source: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Candidate)
+    query = db.query(Candidate).filter(Candidate.deleted_at.is_(None))
     if q:
         query = query.filter(
             or_(

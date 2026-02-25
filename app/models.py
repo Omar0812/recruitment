@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Float
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Float, func
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
@@ -28,6 +28,8 @@ class Candidate(Base):
     followup_status = Column(String)   # 待跟进 / 已联系 / 暂不考虑
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    merged_into = Column(Integer, nullable=True)
+    deleted_at = Column(DateTime, nullable=True)
 
     job_links = relationship("CandidateJobLink", back_populates="candidate", cascade="all, delete-orphan")
     history = relationship("HistoryEntry", back_populates="candidate", cascade="all, delete-orphan")

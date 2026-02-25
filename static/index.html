@@ -135,6 +135,16 @@
     </div>
   </div>
 
+  <div id="dedup-overlay" class="modal-overlay hidden" style="align-items:flex-start;padding:24px;overflow-y:auto">
+    <div class="modal" style="max-width:800px;width:100%;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h2 style="margin:0">候选人查重</h2>
+        <button id="dedup-close" class="btn btn-secondary" style="padding:4px 12px">×</button>
+      </div>
+      <div id="dedup-content"><span class="spinner"></span></div>
+    </div>
+  </div>
+
   <script src="/static/app.js"></script>
 </body>
 </html>

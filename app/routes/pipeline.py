@@ -123,7 +123,10 @@ def update_notes(link_id: int, data: NotesUpdate, db: Session = Depends(get_db))
 
 @router.get("/active")
 def get_active_pipeline(db: Session = Depends(get_db)):
-    links = db.query(CandidateJobLink).filter(CandidateJobLink.outcome == None).all()
+    links = db.query(CandidateJobLink).join(Candidate).filter(
+        CandidateJobLink.outcome == None,
+        Candidate.deleted_at.is_(None)
+    ).all()
     result = []
     for lnk in links:
         result.append({
