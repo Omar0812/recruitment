@@ -480,7 +480,7 @@ async function renderCandidateProfile(el, id) {
         <div>
           <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
             <h1 style="margin:0;font-size:22px">${mainName} <span style="font-size:14px;color:#999;font-weight:400">@${displayId}</span></h1>
-            ${c.name && c.name_en ? `<span style="font-size:14px;color:#888">${c.name_en}</span>` : ""}
+            ${c.name_en && c.name_en !== c.name ? `<span style="font-size:14px;color:#888">${c.name_en}</span>` : ""}
           </div>
           <div style="margin-top:6px;font-size:14px;color:#555">
             ${firstWork.title ? `${firstWork.title}${firstWork.company ? " @ " + firstWork.company : ""}` : (c.last_title || c.last_company ? [c.last_title,c.last_company].filter(Boolean).join(" @ ") : "")}
@@ -496,7 +496,7 @@ async function renderCandidateProfile(el, id) {
           </div>
         </div>
         <div style="display:flex;gap:8px;align-items:flex-start;flex-shrink:0">
-          ${c.resume_path ? `<a href="/resumes/${encodeURIComponent(c.resume_path.split('/').slice(-2).join('/'))}" target="_blank" class="btn btn-secondary btn-sm">查看简历</a>` : ""}
+          ${c.resume_path ? `<a href="/resumes/${encodeURIComponent(c.resume_path.split('/').slice(-2).join('/'))}" target="_blank" class="btn btn-secondary btn-sm">下载简历</a>` : ""}
           <button class="btn btn-secondary btn-sm" id="edit-info-btn">编辑信息</button>
         </div>
       </div>
@@ -512,10 +512,14 @@ async function renderCandidateProfile(el, id) {
     </div>
 
     <div style="display:flex;gap:0;border-bottom:2px solid #e5e7eb;margin-bottom:16px">
-      <button class="profile-tab-btn active" data-tab="resume" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:#1a1a2e;border-bottom:2px solid #1a1a2e;margin-bottom:-2px">简历背景</button>
+      <button class="profile-tab-btn active" data-tab="resume" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:#1a1a2e;border-bottom:2px solid #1a1a2e;margin-bottom:-2px">过往背景</button>
+      ${c.resume_path ? `<button class="profile-tab-btn" data-tab="preview" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:14px;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px">简历预览</button>` : ""}
       <button class="profile-tab-btn" data-tab="pipeline" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:14px;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px">投递记录</button>
       <button class="profile-tab-btn" data-tab="history" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:14px;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px">历史记录</button>
     </div>
+
+    <!-- 简历预览 tab -->
+    ${c.resume_path ? `<div class="profile-tab-panel" data-tab="preview" style="display:none"></div>` : ""}
 
     <!-- 简历背景 tab -->
     <div class="profile-tab-panel" data-tab="resume">
@@ -585,8 +589,9 @@ async function renderCandidateProfile(el, id) {
     </div>`;
 
   // tab 切换
+  let previewLoaded = false;
   document.querySelectorAll(".profile-tab-btn").forEach(btn => {
-    btn.onclick = () => {
+    btn.onclick = async () => {
       document.querySelectorAll(".profile-tab-btn").forEach(b => {
         b.classList.remove("active");
         b.style.color = "#888";
@@ -596,6 +601,31 @@ async function renderCandidateProfile(el, id) {
       btn.style.color = "#1a1a2e";
       btn.style.borderBottomColor = "#1a1a2e";
       document.querySelectorAll(".profile-tab-panel").forEach(p => p.style.display = p.dataset.tab === btn.dataset.tab ? "" : "none");
+
+      // 简历预览懒加载
+      if (btn.dataset.tab === "preview" && !previewLoaded) {
+        previewLoaded = true;
+        const panel = document.querySelector(".profile-tab-panel[data-tab='preview']");
+        panel.innerHTML = `<div style="padding:24px;text-align:center"><span class="spinner"></span></div>`;
+        const ext = (c.resume_path || "").split(".").pop().toLowerCase();
+        const staticPath = "/resumes/" + c.resume_path.replace("\\", "/").split("/").slice(-2).join("/");
+        if (["jpg","jpeg","png","gif"].includes(ext)) {
+          panel.innerHTML = `<img src="${staticPath}" style="max-width:100%;border-radius:8px">`;
+        } else if (ext === "pdf") {
+          panel.innerHTML = `<iframe src="${staticPath}" style="width:100%;height:700px;border:none;border-radius:8px"></iframe>`;
+        } else if (ext === "docx") {
+          try {
+            const res = await api.get(`/api/candidates/${id}/resume-preview`);
+            panel.innerHTML = `
+              <div class="warning-banner" style="margin-bottom:12px">预览仅供参考，完整格式请下载查看</div>
+              <div class="card" style="font-size:14px;line-height:1.8">${res.html || "<p>内容为空</p>"}</div>`;
+          } catch {
+            panel.innerHTML = `<div class="empty-state" style="padding:32px">预览失败，请下载查看</div>`;
+          }
+        } else {
+          panel.innerHTML = `<div class="empty-state" style="padding:32px">该格式不支持预览，请下载查看</div>`;
+        }
+      }
     };
   });
 
@@ -1120,8 +1150,8 @@ async function renderJobList(el) {
     const includeClosed = document.getElementById("show-closed")?.checked || false;
 
     const params = new URLSearchParams();
-    // 勾选"显示已关闭"时不过滤 closed，否则后端默认排除
-    if (includeClosed) params.set("include_closed", "true");
+    // 勾选"显示已关闭"或下拉选"已关闭"时，后端包含 closed 岗位
+    if (includeClosed || status === "closed") params.set("include_closed", "true");
     if (q) params.set("q", q);
     if (dept) params.set("department", dept);
     if (category) params.set("job_category", category);
@@ -1176,7 +1206,9 @@ async function renderJobList(el) {
           <td>
             <div style="display:flex;gap:6px">
               <a href="#/jobs/edit/${j.id}" class="btn btn-secondary btn-sm">编辑</a>
-              ${j.status !== "closed" ? `<button class="btn btn-danger btn-sm close-job-btn" data-job-id="${j.id}">关闭</button>` : ""}
+              ${j.status !== "closed"
+                ? `<button class="btn btn-danger btn-sm close-job-btn" data-job-id="${j.id}" data-active-count="${j.active_count}">关闭</button>`
+                : `<button class="btn btn-secondary btn-sm reopen-job-btn" data-job-id="${j.id}">重新打开</button>`}
             </div>
           </td>
         </tr>`;
@@ -1185,8 +1217,45 @@ async function renderJobList(el) {
 
     tableEl.querySelectorAll(".close-job-btn").forEach(btn => {
       btn.onclick = async () => {
-        if (!confirm("确认关闭该岗位？关闭后不再显示在招聘中列表。")) return;
-        await api.patch(`/api/jobs/${btn.dataset.jobId}`, { status: "closed" });
+        const jobId = btn.dataset.jobId;
+        const activeCount = parseInt(btn.dataset.activeCount) || 0;
+        if (activeCount === 0) {
+          if (!confirm("确认关闭该岗位？关闭后不再显示在招聘中列表。")) return;
+          await api.patch(`/api/jobs/${jobId}`, { status: "closed" });
+          loadJobs();
+        } else {
+          // 自定义弹窗
+          const overlay = document.createElement("div");
+          overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center";
+          overlay.innerHTML = `
+            <div style="background:#fff;border-radius:12px;padding:28px;max-width:400px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.18)">
+              <h3 style="margin:0 0 12px;font-size:16px">关闭岗位</h3>
+              <p style="margin:0 0 20px;color:#555;font-size:14px">该岗位还有 <strong>${activeCount}</strong> 名候选人在流程中，请选择处理方式：</p>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <button id="bulk-reject-btn" class="btn btn-danger" style="width:100%">批量淘汰并关闭（此操作不可撤销）</button>
+                <button id="close-only-btn" class="btn btn-secondary" style="width:100%">仅关闭岗位（保留流程记录）</button>
+                <button id="cancel-close-btn" class="btn btn-secondary" style="width:100%;color:#888">取消</button>
+              </div>
+            </div>`;
+          document.body.appendChild(overlay);
+          overlay.querySelector("#bulk-reject-btn").onclick = async () => {
+            document.body.removeChild(overlay);
+            await api.patch(`/api/jobs/${jobId}`, { status: "closed", bulk_reject: true });
+            loadJobs();
+          };
+          overlay.querySelector("#close-only-btn").onclick = async () => {
+            document.body.removeChild(overlay);
+            await api.patch(`/api/jobs/${jobId}`, { status: "closed" });
+            loadJobs();
+          };
+          overlay.querySelector("#cancel-close-btn").onclick = () => document.body.removeChild(overlay);
+        }
+      };
+    });
+
+    tableEl.querySelectorAll(".reopen-job-btn").forEach(btn => {
+      btn.onclick = async () => {
+        await api.patch(`/api/jobs/${btn.dataset.jobId}`, { status: "open" });
         loadJobs();
       };
     });

@@ -39,6 +39,7 @@ class JobUpdate(BaseModel):
     job_category: Optional[str] = None
     employment_type: Optional[str] = None
     priority: Optional[str] = None
+    bulk_reject: Optional[bool] = False
 
 
 def job_to_dict(job: Job, active_count: int = 0, last_activity: Optional[datetime] = None, stage_counts: Optional[dict] = None) -> dict:
@@ -141,8 +142,20 @@ def update_job(job_id: int, data: JobUpdate, db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="岗位不存在")
-    for field, value in data.model_dump(exclude_none=True).items():
+    bulk_reject = data.bulk_reject
+    update_data = data.model_dump(exclude_none=True)
+    update_data.pop("bulk_reject", None)
+    for field, value in update_data.items():
         setattr(job, field, value)
+    if bulk_reject and data.status == "closed":
+        active_links = db.query(CandidateJobLink).filter(
+            CandidateJobLink.job_id == job_id,
+            CandidateJobLink.outcome.is_(None)
+        ).all()
+        for lnk in active_links:
+            lnk.outcome = "rejected"
+            lnk.rejection_reason = "岗位关闭"
+            lnk.updated_at = datetime.utcnow()
     job.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(job)

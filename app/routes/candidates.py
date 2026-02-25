@@ -4,6 +4,7 @@ from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+import os
 
 from app.database import get_db
 from app.models import Candidate, HistoryEntry
@@ -222,3 +223,37 @@ def update_candidate(candidate_id: int, data: CandidateUpdate, db: Session = Dep
     db.commit()
     db.refresh(c)
     return candidate_to_dict(c)
+
+
+@router.get("/{candidate_id}/resume-preview")
+def resume_preview(candidate_id: int, db: Session = Depends(get_db)):
+    c = db.query(Candidate).filter(Candidate.id == candidate_id, Candidate.deleted_at.is_(None)).first()
+    if not c or not c.resume_path:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    if not os.path.exists(c.resume_path):
+        raise HTTPException(status_code=404, detail="简历文件不存在")
+    ext = os.path.splitext(c.resume_path)[1].lower()
+    # 构建静态访问路径
+    parts = c.resume_path.replace("\\", "/").split("/")
+    static_path = "/resumes/" + "/".join(parts[-2:])
+    if ext == ".docx":
+        try:
+            from docx import Document
+            doc = Document(c.resume_path)
+            html_parts = []
+            for para in doc.paragraphs:
+                text = para.text.strip()
+                if text:
+                    html_parts.append(f"<p>{text}</p>")
+            for table in doc.tables:
+                html_parts.append("<table style='border-collapse:collapse;width:100%'>")
+                for row in table.rows:
+                    html_parts.append("<tr>")
+                    for cell in row.cells:
+                        html_parts.append(f"<td style='border:1px solid #ddd;padding:6px 8px;font-size:13px'>{cell.text}</td>")
+                    html_parts.append("</tr>")
+                html_parts.append("</table>")
+            return {"html": "".join(html_parts)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"DOCX 解析失败: {str(e)}")
+    return {"redirect": static_path}
