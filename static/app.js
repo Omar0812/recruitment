@@ -505,20 +505,22 @@ async function renderJobList(el) {
     const priorityStyle = { "高": "priority-high", "中": "priority-mid", "低": "priority-low" };
 
     tableEl.innerHTML = `<table class="table">
-      <thead><tr><th>职位名称</th><th>标签</th><th>状态</th><th>候选人进展</th><th>操作</th></tr></thead>
+      <thead><tr><th>职位名称</th><th>城市/部门/类型/属性</th><th>优先级</th><th>状态</th><th>候选人进展</th><th>操作</th></tr></thead>
       <tbody>${jobs.map(j => {
         const num = String(j.id).padStart(3, "0");
-        const subtitle = [j.city, j.job_category, j.department, j.employment_type].filter(Boolean).join(" · ");
-        const progress = renderProgress(j.stage_counts, j.stages);
-        const priorityTag = j.priority ? `<span class="priority-tag ${priorityStyle[j.priority] || ""}">${j.priority}</span>` : "";
+        const info = [j.city, j.department, j.job_category, j.employment_type].filter(Boolean).join(" · ");
+        const total = Object.values(j.stage_counts || {}).reduce((a, b) => a + b, 0);
+        const progress = total > 0 ? renderProgress(j.stage_counts, j.stages) : "-";
+        const priorityTag = j.priority ? `<span class="priority-tag ${priorityStyle[j.priority] || ""}">${j.priority}</span>` : "-";
         const statusLabel = j.status === "open" ? "招聘中" : j.status === "paused" ? "暂停" : "已关闭";
         const statusStyle = j.status === "open" ? "" : "background:#f0f0f0;color:#999";
         return `
         <tr>
           <td>
             <a href="#/jobs/pipeline/${j.id}" class="job-title-link">${j.title}</a>
-            <div class="job-subtitle">@${num}${subtitle ? "  ·  " + subtitle : ""}</div>
+            <div class="job-subtitle">#${num}</div>
           </td>
+          <td style="color:#555;font-size:13px">${info || "-"}</td>
           <td>${priorityTag}</td>
           <td><span class="tag" style="${statusStyle}">${statusLabel}</span></td>
           <td class="job-progress">${progress}</td>
