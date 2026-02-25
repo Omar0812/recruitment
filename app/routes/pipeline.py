@@ -22,6 +22,7 @@ class StageUpdate(BaseModel):
 
 class OutcomeUpdate(BaseModel):
     outcome: str  # rejected / withdrawn
+    rejection_reason: Optional[str] = None
 
 
 class NotesUpdate(BaseModel):
@@ -92,13 +93,16 @@ def update_outcome(link_id: int, data: OutcomeUpdate, db: Session = Depends(get_
     if not lnk:
         raise HTTPException(status_code=404, detail="关联不存在")
     lnk.outcome = data.outcome
+    if data.rejection_reason:
+        lnk.rejection_reason = data.rejection_reason
     lnk.updated_at = datetime.utcnow()
     label = "淘汰" if data.outcome == "rejected" else "退出"
+    reason_str = f"（{data.rejection_reason}）" if data.rejection_reason else ""
     db.add(HistoryEntry(
         candidate_id=lnk.candidate_id,
         job_id=lnk.job_id,
         event_type="outcome",
-        detail=f"结果：{label}",
+        detail=f"结果：{label}{reason_str}",
     ))
     db.commit()
     db.refresh(lnk)

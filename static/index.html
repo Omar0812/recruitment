@@ -13,6 +13,7 @@
       <nav>
         <a href="#/" class="nav-item" data-page="dashboard">首页</a>
         <a href="#/candidates" class="nav-item" data-page="candidates">候选人</a>
+        <a href="#/talent" class="nav-item" data-page="talent">人才库</a>
         <a href="#/jobs" class="nav-item" data-page="jobs">岗位库</a>
       </nav>
     </aside>
@@ -60,6 +61,74 @@
       <div class="modal-actions">
         <button id="link-job-cancel" class="btn btn-secondary">取消</button>
         <button id="link-job-confirm" class="btn btn-primary">确认关联</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 面试记录弹窗 -->
+  <div id="interview-overlay" class="modal-overlay hidden">
+    <div class="modal" style="max-width:420px">
+      <h2>新增面试记录</h2>
+      <div class="form-grid" style="margin-top:12px">
+        <div class="form-group">
+          <label>轮次</label>
+          <select id="iv-round" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px">
+            <option value="一面">一面</option>
+            <option value="二面">二面</option>
+            <option value="三面">三面</option>
+            <option value="终面">终面</option>
+            <option value="HR面">HR面</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>面试官</label>
+          <input id="iv-interviewer" placeholder="面试官姓名">
+        </div>
+        <div class="form-group">
+          <label>面试时间</label>
+          <input id="iv-time" type="datetime-local">
+        </div>
+        <div class="form-group">
+          <label>评分（1-5）</label>
+          <input id="iv-score" type="number" min="1" max="5" placeholder="1-5">
+        </div>
+        <div class="form-group form-full">
+          <label>评语</label>
+          <textarea id="iv-comment" style="min-height:60px"></textarea>
+        </div>
+        <div class="form-group form-full">
+          <label>结论</label>
+          <select id="iv-conclusion" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px">
+            <option value="">-- 待定 --</option>
+            <option value="通过">通过</option>
+            <option value="待定">待定</option>
+            <option value="淘汰">淘汰</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="iv-cancel" class="btn btn-secondary">取消</button>
+        <button id="iv-confirm" class="btn btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 淘汰原因弹窗 -->
+  <div id="reject-overlay" class="modal-overlay hidden">
+    <div class="modal" style="max-width:360px">
+      <h2>淘汰原因</h2>
+      <div class="form-group" style="margin-top:12px">
+        <select id="reject-reason-select" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px">
+          <option value="">-- 请选择原因 --</option>
+          <option value="能力不足">能力不足</option>
+          <option value="薪资不匹配">薪资不匹配</option>
+          <option value="主动放弃">主动放弃</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button id="reject-cancel" class="btn btn-secondary">取消</button>
+        <button id="reject-confirm" class="btn btn-danger">确认淘汰</button>
       </div>
     </div>
   </div>

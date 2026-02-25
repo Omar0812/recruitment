@@ -42,6 +42,7 @@ class CandidateUpdate(BaseModel):
     skill_tags: Optional[List[str]] = None
     source: Optional[str] = None
     notes: Optional[str] = None
+    followup_status: Optional[str] = None
 
 
 def candidate_to_dict(c: Candidate) -> dict:
@@ -61,6 +62,7 @@ def candidate_to_dict(c: Candidate) -> dict:
         "source": c.source,
         "notes": c.notes,
         "resume_path": c.resume_path,
+        "followup_status": c.followup_status,
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "updated_at": c.updated_at.isoformat() if c.updated_at else None,
     }
@@ -82,6 +84,8 @@ def list_candidates(
     q: Optional[str] = Query(None),
     education: Optional[str] = Query(None),
     tag: Optional[str] = Query(None),
+    followup_status: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     query = db.query(Candidate)
@@ -95,6 +99,10 @@ def list_candidates(
         )
     if education:
         query = query.filter(Candidate.education.ilike(f"%{education}%"))
+    if followup_status:
+        query = query.filter(Candidate.followup_status == followup_status)
+    if source:
+        query = query.filter(Candidate.source == source)
     candidates = query.order_by(Candidate.created_at.desc()).all()
     if tag:
         candidates = [c for c in candidates if tag in (c.skill_tags or [])]

@@ -15,6 +15,7 @@ function router() {
   if (hash === "#/" || hash === "#/dashboard") return renderDashboard(content);
   if (hash === "#/candidates") return renderCandidateList(content);
   if (hash.startsWith("#/candidates/")) return renderCandidateProfile(content, hash.split("/")[2]);
+  if (hash === "#/talent") return renderTalentPool(content);
   if (hash === "#/jobs") return renderJobList(content);
   if (hash.startsWith("#/jobs/pipeline/")) return renderPipeline(content, hash.split("/")[3]);
   if (hash.startsWith("#/jobs/edit/")) return renderJobForm(content, hash.split("/")[3]);
@@ -283,6 +284,14 @@ async function renderCandidateProfile(el, id) {
           ["城市", c.city], ["工作年限", c.years_exp ? c.years_exp + "年" : null],
           ["来源", c.source],
         ].map(([label, val]) => val ? `<div class="form-group"><label>${label}</label><div style="font-size:14px;padding:8px 0">${val}</div></div>` : "").join("")}
+        <div class="form-group"><label>跟进状态</label>
+          <select id="profile-followup" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
+            <option value="" ${!c.followup_status ? "selected" : ""}>未设置</option>
+            <option value="待跟进" ${c.followup_status === "待跟进" ? "selected" : ""}>待跟进</option>
+            <option value="已联系" ${c.followup_status === "已联系" ? "selected" : ""}>已联系</option>
+            <option value="暂不考虑" ${c.followup_status === "暂不考虑" ? "selected" : ""}>暂不考虑</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -387,6 +396,129 @@ async function renderCandidateProfile(el, id) {
       renderCandidateProfile(el, id);
     };
   };
+
+  document.getElementById("profile-followup").onchange = async (e) => {
+    await api.patch(`/api/candidates/${id}`, { followup_status: e.target.value || null });
+  };
+}
+
+// ── Talent Pool ───────────────────────────────────────────────────────────────
+async function renderTalentPool(el) {
+  el.innerHTML = `
+    <div class="page-header">
+      <h1>人才库</h1>
+    </div>
+    <div class="filter-bar" style="margin-bottom:16px">
+      <input id="tp-search" type="text" placeholder="搜索姓名、手机、邮箱..." style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none">
+      <select id="tp-followup" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
+        <option value="">全部跟进状态</option>
+        <option value="待跟进">待跟进</option>
+        <option value="已联系">已联系</option>
+        <option value="暂不考虑">暂不考虑</option>
+      </select>
+      <select id="tp-source" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
+        <option value="">全部来源</option>
+      </select>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div id="tp-table"><span class="spinner" style="margin:24px"></span></div>
+    </div>`;
+
+  const followupColor = { "待跟进": "background:#fef9c3;color:#854d0e", "已联系": "background:#dcfce7;color:#166534", "暂不考虑": "background:#f3f4f6;color:#6b7280" };
+
+  const loadTalent = async () => {
+    const q = document.getElementById("tp-search")?.value || "";
+    const followup = document.getElementById("tp-followup")?.value || "";
+    const source = document.getElementById("tp-source")?.value || "";
+
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (followup) params.set("followup_status", followup);
+    if (source) params.set("source", source);
+
+    const candidates = await api.get(`/api/candidates${params.toString() ? "?" + params.toString() : ""}`);
+    const tableEl = document.getElementById("tp-table");
+    if (!tableEl) return;
+
+    // 动态填充来源下拉（仅首次）
+    const sourceSelect = document.getElementById("tp-source");
+    if (sourceSelect && sourceSelect.options.length <= 1) {
+      [...new Set(candidates.map(c => c.source).filter(Boolean))].forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s; opt.textContent = s;
+        sourceSelect.appendChild(opt);
+      });
+    }
+
+    if (!candidates.length) {
+      tableEl.innerHTML = '<div class="empty-state">暂无候选人</div>';
+      return;
+    }
+
+    tableEl.innerHTML = `<table class="table">
+      <thead><tr><th>姓名</th><th>技能标签</th><th>跟进状态</th><th>关联岗位</th><th>来源</th><th>操作</th></tr></thead>
+      <tbody>${candidates.map(c => {
+        const tags = (c.skill_tags || []).slice(0, 3).map(t => `<span class="tag">${t}</span>`).join(" ");
+        const fs = c.followup_status;
+        const fsTag = fs ? `<span class="tag" style="${followupColor[fs] || ""}">${fs}</span>` : "-";
+        const jobCount = (c.job_links || []).length;
+        return `<tr>
+          <td><a href="#/candidates/${c.id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${c.name}</a>
+            ${c.last_title ? `<div style="font-size:12px;color:#888">${c.last_title}${c.last_company ? " @ " + c.last_company : ""}</div>` : ""}
+          </td>
+          <td>${tags || "-"}</td>
+          <td>
+            <select class="tp-followup-select" data-id="${c.id}" style="font-size:12px;padding:3px 6px;border:1px solid #ddd;border-radius:6px;background:#f9f9f9">
+              <option value="" ${!fs ? "selected" : ""}>未设置</option>
+              <option value="待跟进" ${fs === "待跟进" ? "selected" : ""}>待跟进</option>
+              <option value="已联系" ${fs === "已联系" ? "selected" : ""}>已联系</option>
+              <option value="暂不考虑" ${fs === "暂不考虑" ? "selected" : ""}>暂不考虑</option>
+            </select>
+          </td>
+          <td>${jobCount > 0 ? `${jobCount} 个岗位` : "-"}</td>
+          <td>${c.source || "-"}</td>
+          <td>
+            <div style="display:flex;gap:6px">
+              <a href="#/candidates/${c.id}" class="btn btn-secondary btn-sm">详情</a>
+              <button class="btn btn-primary btn-sm tp-recommend-btn" data-id="${c.id}">推荐到岗位</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join("")}
+      </tbody></table>`;
+
+    // 跟进状态内联修改
+    tableEl.querySelectorAll(".tp-followup-select").forEach(sel => {
+      sel.onchange = async () => {
+        await api.patch(`/api/candidates/${sel.dataset.id}`, { followup_status: sel.value || null });
+      };
+    });
+
+    // 推荐到岗位
+    tableEl.querySelectorAll(".tp-recommend-btn").forEach(btn => {
+      btn.onclick = async () => {
+        const jobs = await api.get("/api/jobs");
+        const overlay = document.getElementById("link-job-overlay");
+        const select = document.getElementById("link-job-select");
+        select.innerHTML = jobs.map(j => `<option value="${j.id}">${j.title}</option>`).join("");
+        overlay.classList.remove("hidden");
+        document.getElementById("link-job-cancel").onclick = () => overlay.classList.add("hidden");
+        document.getElementById("link-job-confirm").onclick = async () => {
+          overlay.classList.add("hidden");
+          const jobId = parseInt(select.value);
+          await api.post("/api/pipeline/link", { candidate_id: parseInt(btn.dataset.id), job_id: jobId });
+          location.hash = `#/jobs/pipeline/${jobId}`;
+        };
+      };
+    });
+  };
+
+  loadTalent();
+
+  let timer;
+  document.getElementById("tp-search").oninput = () => { clearTimeout(timer); timer = setTimeout(loadTalent, 300); };
+  document.getElementById("tp-followup").onchange = loadTalent;
+  document.getElementById("tp-source").onchange = loadTalent;
 }
 
 // ── Job List ──────────────────────────────────────────────────────────────────
@@ -646,6 +778,39 @@ async function renderJobForm(el, id) {
 }
 
 // ── Pipeline Kanban ───────────────────────────────────────────────────────────
+async function loadInterviewList(linkId) {
+  const listEl = document.getElementById(`iv-list-${linkId}`);
+  if (!listEl) return;
+  const records = await api.get(`/api/interviews?link_id=${linkId}`);
+  if (!records.length) {
+    listEl.innerHTML = '<div style="color:#aaa;padding:4px 0">暂无面试记录</div>';
+    return;
+  }
+  const conclusionColor = { "通过": "#16a34a", "淘汰": "#dc2626", "待定": "#d97706" };
+  listEl.innerHTML = records.map(r => `
+    <div style="border:1px solid #eee;border-radius:6px;padding:6px 8px;margin-bottom:6px;background:#fafafa">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:600">${r.round || "面试"}${r.interviewer ? " · " + r.interviewer : ""}</span>
+        <span style="display:flex;gap:6px;align-items:center">
+          ${r.conclusion ? `<span style="color:${conclusionColor[r.conclusion] || "#555"};font-size:12px">${r.conclusion}</span>` : ""}
+          ${r.score ? `<span style="color:#f59e0b">★${r.score}</span>` : ""}
+          <button class="btn btn-danger btn-sm del-interview-btn" data-id="${r.id}" data-link-id="${linkId}" style="padding:1px 6px;font-size:11px">删</button>
+        </span>
+      </div>
+      ${r.interview_time ? `<div style="color:#888;font-size:12px;margin-top:2px">${r.interview_time.replace("T", " ")}</div>` : ""}
+      ${r.comment ? `<div style="margin-top:4px;color:#555">${r.comment}</div>` : ""}
+    </div>`).join("");
+
+  listEl.querySelectorAll(".del-interview-btn").forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm("确认删除该面试记录？")) return;
+      await fetch(`/api/interviews/${btn.dataset.id}`, { method: "DELETE" });
+      await loadInterviewList(btn.dataset.linkId);
+    };
+  });
+}
+
 async function renderPipeline(el, jobId) {
   el.innerHTML = '<span class="spinner"></span>';
   const [job, pipeline] = await Promise.all([
@@ -685,9 +850,64 @@ async function renderPipeline(el, jobId) {
   el.querySelectorAll(".reject-btn").forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
-      if (!confirm("确认淘汰该候选人？")) return;
-      await api.patch(`/api/pipeline/link/${btn.dataset.linkId}/outcome`, { outcome: "rejected" });
-      renderPipeline(el, jobId);
+      const overlay = document.getElementById("reject-overlay");
+      const sel = document.getElementById("reject-reason-select");
+      sel.value = "";
+      overlay.classList.remove("hidden");
+
+      document.getElementById("reject-cancel").onclick = () => overlay.classList.add("hidden");
+      document.getElementById("reject-confirm").onclick = async () => {
+        if (!sel.value) { alert("请选择淘汰原因"); return; }
+        overlay.classList.add("hidden");
+        await api.patch(`/api/pipeline/link/${btn.dataset.linkId}/outcome`, { outcome: "rejected", rejection_reason: sel.value });
+        renderPipeline(el, jobId);
+      };
+    };
+  });
+
+  // 面试记录展开/收起
+  el.querySelectorAll(".interview-toggle-btn").forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const linkId = btn.dataset.linkId;
+      const panel = document.getElementById(`iv-panel-${linkId}`);
+      const isHidden = panel.classList.toggle("hidden");
+      if (!isHidden) {
+        await loadInterviewList(linkId);
+      }
+    };
+  });
+
+  // 新增面试记录
+  el.querySelectorAll(".add-interview-btn").forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const linkId = btn.dataset.linkId;
+      const overlay = document.getElementById("interview-overlay");
+      document.getElementById("iv-round").value = "一面";
+      document.getElementById("iv-interviewer").value = "";
+      document.getElementById("iv-time").value = "";
+      document.getElementById("iv-score").value = "";
+      document.getElementById("iv-comment").value = "";
+      document.getElementById("iv-conclusion").value = "";
+      overlay.classList.remove("hidden");
+
+      document.getElementById("iv-cancel").onclick = () => overlay.classList.add("hidden");
+      document.getElementById("iv-confirm").onclick = async () => {
+        const score = document.getElementById("iv-score").value;
+        if (score && (score < 1 || score > 5)) { alert("评分须在 1-5 之间"); return; }
+        overlay.classList.add("hidden");
+        await api.post("/api/interviews", {
+          link_id: parseInt(linkId),
+          round: document.getElementById("iv-round").value,
+          interviewer: document.getElementById("iv-interviewer").value || null,
+          interview_time: document.getElementById("iv-time").value || null,
+          score: score ? parseInt(score) : null,
+          comment: document.getElementById("iv-comment").value || null,
+          conclusion: document.getElementById("iv-conclusion").value || null,
+        });
+        await loadInterviewList(linkId);
+      };
     };
   });
 
@@ -737,16 +957,22 @@ async function renderPipeline(el, jobId) {
 function renderCard(lnk, stages) {
   const stageOptions = stages.map(s => `<option value="${s}" ${s === lnk.stage ? "selected" : ""}>${s}</option>`).join("");
   const lastUpdate = lnk.days_since_update !== null ? (lnk.days_since_update === 0 ? "今天" : `${lnk.days_since_update}天前`) : "";
+  const rejectionTag = lnk.rejection_reason ? `<span class="tag" style="background:#fee2e2;color:#dc2626;font-size:11px">${lnk.rejection_reason}</span>` : "";
   return `
     <div class="kanban-card" draggable="true" data-link-id="${lnk.id}" data-stage="${lnk.stage}">
       <div class="card-name"><a href="#/candidates/${lnk.candidate_id}" style="color:inherit;text-decoration:none">${lnk.candidate_name}</a></div>
-      <div class="card-meta">${lastUpdate ? `🕐 ${lastUpdate}` : ""}${lnk.notes ? ` 📝 ${lnk.notes}` : ""}</div>
+      <div class="card-meta">${lastUpdate ? `🕐 ${lastUpdate}` : ""}${lnk.notes ? ` 📝 ${lnk.notes}` : ""}${rejectionTag}</div>
       <div class="card-actions">
         <select class="move-stage-select" data-link-id="${lnk.id}" style="flex:1;font-size:12px;padding:3px 6px;border:1px solid #ddd;border-radius:6px;background:#f9f9f9">${stageOptions}</select>
       </div>
       <div class="card-actions" style="margin-top:4px">
         <button class="btn btn-secondary btn-sm note-btn" data-link-id="${lnk.id}">备注</button>
+        <button class="btn btn-secondary btn-sm interview-toggle-btn" data-link-id="${lnk.id}">面试记录</button>
         <button class="btn btn-danger btn-sm reject-btn" data-link-id="${lnk.id}">淘汰</button>
+      </div>
+      <div class="interview-panel hidden" id="iv-panel-${lnk.id}">
+        <div id="iv-list-${lnk.id}" style="margin-top:8px;font-size:13px;color:#555"></div>
+        <button class="btn btn-secondary btn-sm add-interview-btn" data-link-id="${lnk.id}" style="margin-top:6px">+ 新增面试记录</button>
       </div>
     </div>`;
 }

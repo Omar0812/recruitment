@@ -22,6 +22,7 @@ class Candidate(Base):
     source = Column(String)
     notes = Column(Text)
     resume_path = Column(String)
+    followup_status = Column(String)   # 待跟进 / 已联系 / 暂不考虑
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -62,8 +63,11 @@ class CandidateJobLink(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    rejection_reason = Column(String)  # 能力不足 / 薪资不匹配 / 主动放弃 / 其他
+
     candidate = relationship("Candidate", back_populates="job_links")
     job = relationship("Job", back_populates="candidate_links")
+    interview_records = relationship("InterviewRecord", back_populates="link", cascade="all, delete-orphan")
 
 
 class HistoryEntry(Base):
@@ -77,3 +81,19 @@ class HistoryEntry(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     candidate = relationship("Candidate", back_populates="history")
+
+
+class InterviewRecord(Base):
+    __tablename__ = "interview_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    link_id = Column(Integer, ForeignKey("candidate_job_links.id"), nullable=False)
+    round = Column(String)        # 一面 / 二面 / 终面 等
+    interviewer = Column(String)
+    interview_time = Column(String)
+    score = Column(Integer)       # 1-5
+    comment = Column(Text)
+    conclusion = Column(String)   # 通过 / 待定 / 淘汰
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    link = relationship("CandidateJobLink", back_populates="interview_records")
