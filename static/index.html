@@ -28,10 +28,12 @@
   <!-- 简历确认弹窗 -->
   <div id="modal-overlay" class="modal-overlay hidden">
     <div class="modal">
-      <h2>确认候选人信息</h2>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <h2 style="margin:0">确认候选人信息</h2>
+        <button id="modal-cancel" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999;line-height:1">×</button>
+      </div>
       <div id="modal-body"></div>
       <div class="modal-actions">
-        <button id="modal-cancel" class="btn btn-secondary">取消</button>
         <button id="modal-save" class="btn btn-primary">保存候选人</button>
       </div>
     </div>

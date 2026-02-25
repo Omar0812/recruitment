@@ -12,7 +12,8 @@ router = APIRouter(prefix="/api/candidates", tags=["candidates"])
 
 
 class CandidateCreate(BaseModel):
-    name: str
+    name: Optional[str] = None
+    name_en: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
     age: Optional[int] = None
@@ -26,10 +27,13 @@ class CandidateCreate(BaseModel):
     source: Optional[str] = None
     notes: Optional[str] = None
     resume_path: Optional[str] = None
+    education_list: Optional[List[dict]] = []
+    work_experience: Optional[List[dict]] = []
 
 
 class CandidateUpdate(BaseModel):
     name: Optional[str] = None
+    name_en: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
     age: Optional[int] = None
@@ -43,12 +47,15 @@ class CandidateUpdate(BaseModel):
     source: Optional[str] = None
     notes: Optional[str] = None
     followup_status: Optional[str] = None
+    education_list: Optional[List[dict]] = None
+    work_experience: Optional[List[dict]] = None
 
 
 def candidate_to_dict(c: Candidate) -> dict:
     return {
         "id": c.id,
         "name": c.name,
+        "name_en": c.name_en,
         "phone": c.phone,
         "email": c.email,
         "age": c.age,
@@ -63,18 +70,39 @@ def candidate_to_dict(c: Candidate) -> dict:
         "notes": c.notes,
         "resume_path": c.resume_path,
         "followup_status": c.followup_status,
+        "education_list": c.education_list or [],
+        "work_experience": c.work_experience or [],
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "updated_at": c.updated_at.isoformat() if c.updated_at else None,
     }
 
 
+def _sync_legacy_fields(candidate: Candidate):
+    """从新数组字段同步旧字段（向后兼容）"""
+    edu_list = candidate.education_list or []
+    if edu_list:
+        candidate.education = edu_list[0].get("degree") or candidate.education
+        candidate.school = edu_list[0].get("school") or candidate.school
+    work_list = candidate.work_experience or []
+    if work_list:
+        candidate.last_company = work_list[0].get("company") or candidate.last_company
+        candidate.last_title = work_list[0].get("title") or candidate.last_title
+
+
 @router.post("")
 def create_candidate(data: CandidateCreate, db: Session = Depends(get_db)):
-    candidate = Candidate(**data.model_dump())
+    # name 兜底：用 name_en
+    payload = data.model_dump()
+    if not payload.get("name") and payload.get("name_en"):
+        payload["name"] = payload["name_en"]
+    candidate = Candidate(**payload)
+    _sync_legacy_fields(candidate)
     db.add(candidate)
     db.flush()
     db.add(HistoryEntry(candidate_id=candidate.id, event_type="created", detail="候选人档案创建"))
     db.commit()
+    db.refresh(candidate)
+    return candidate_to_dict(candidate)
 
 
 class DuplicateCheckRequest(BaseModel):
@@ -183,6 +211,7 @@ def update_candidate(candidate_id: int, data: CandidateUpdate, db: Session = Dep
         raise HTTPException(status_code=404, detail="候选人不存在")
     for field, value in data.model_dump(exclude_none=True).items():
         setattr(c, field, value)
+    _sync_legacy_fields(c)
     c.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(c)

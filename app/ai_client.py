@@ -14,19 +14,25 @@ def _load_config():
 _load_config()
 
 EXTRACT_PROMPT = """从以下简历文本中提取结构化信息，以JSON格式返回，字段如下：
-- name: 姓名
+- name: 中文姓名（无则null）
+- name_en: 英文姓名（无则null）
 - phone: 手机号
 - email: 邮箱
 - age: 年龄（数字，无法确定则null）
-- education: 最高学历（如本科、硕士、博士等）
-- school: 毕业院校
 - city: 当前所在城市
-- last_company: 最近一家公司名称
-- last_title: 最近职位名称
 - years_exp: 工作年限（数字，无法确定则null）
 - skill_tags: 技能标签列表（字符串数组，最多8个）
+- education_list: 所有教育经历数组，每条包含：
+  - degree: 学历（如本科、硕士、博士）
+  - school: 院校名称
+  - major: 专业（无则null）
+  - period: 时间段（如2015-2019，无则null）
+- work_experience: 所有工作经历数组（从最近到最早），每条包含：
+  - company: 公司名称
+  - title: 职位名称
+  - period: 时间段（如2019-至今，无则null）
 
-只返回JSON，不要其他文字。如果某字段无法提取，值为null。
+只返回JSON，不要其他文字。如果某字段无法提取，值为null或空数组。
 
 简历文本：
 {text}"""

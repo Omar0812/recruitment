@@ -124,6 +124,46 @@ async function handleFiles(files) {
   }
 }
 
+// ── 积木块辅助函数 ────────────────────────────────────────────────────────────
+function renderEduBlock(edu = {}) {
+  const div = document.createElement("div");
+  div.className = "block-item";
+  div.style.cssText = "border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:8px;background:#fafafa;position:relative";
+  div.innerHTML = `
+    <button type="button" class="block-del" style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:#999;font-size:16px">×</button>
+    <div class="form-grid" style="gap:8px">
+      <div class="form-group"><label style="font-size:12px">学历</label><input class="edu-degree" placeholder="如：本科、硕士、博士" value="${edu.degree || ""}"></div>
+      <div class="form-group"><label style="font-size:12px">院校</label><input class="edu-school" placeholder="院校名称" value="${edu.school || ""}"></div>
+      <div class="form-group"><label style="font-size:12px">专业</label><input class="edu-major" placeholder="专业（可选）" value="${edu.major || ""}"></div>
+      <div class="form-group"><label style="font-size:12px">时间段</label><input class="edu-period" placeholder="如：2015-2019" value="${edu.period || ""}"></div>
+    </div>`;
+  div.querySelector(".block-del").onclick = () => div.remove();
+  return div;
+}
+
+function renderWorkBlock(work = {}) {
+  const div = document.createElement("div");
+  div.className = "block-item";
+  div.style.cssText = "border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:8px;background:#fafafa;position:relative";
+  div.innerHTML = `
+    <button type="button" class="block-del" style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:#999;font-size:16px">×</button>
+    <div class="form-grid" style="gap:8px">
+      <div class="form-group"><label style="font-size:12px">公司</label><input class="work-company" placeholder="公司名称" value="${work.company || ""}"></div>
+      <div class="form-group"><label style="font-size:12px">职位</label><input class="work-title" placeholder="职位名称" value="${work.title || ""}"></div>
+      <div class="form-group form-full"><label style="font-size:12px">时间段</label><input class="work-period" placeholder="如：2019-至今" value="${work.period || ""}"></div>
+    </div>`;
+  div.querySelector(".block-del").onclick = () => div.remove();
+  return div;
+}
+
+function collectBlocks(container, fields) {
+  return Array.from(container.querySelectorAll(".block-item")).map(block => {
+    const obj = {};
+    fields.forEach(f => { obj[f.key] = block.querySelector(f.sel)?.value.trim() || null; });
+    return obj;
+  }).filter(obj => Object.values(obj).some(Boolean));
+}
+
 async function uploadAndConfirm(file) {
   const formData = new FormData();
   formData.append("file", file);
@@ -142,13 +182,14 @@ async function uploadAndConfirm(file) {
   }
 
   const p = res.parsed || {};
+  const firstWork = (p.work_experience || [])[0] || {};
   const [jobs, dupRes] = await Promise.all([
     api.get("/api/jobs"),
     api.post("/api/candidates/check-duplicate", {
       name: p.name || null,
       phone: p.phone || null,
       email: p.email || null,
-      last_company: p.last_company || null,
+      last_company: firstWork.company || null,
     }),
   ]);
 
@@ -164,84 +205,124 @@ async function uploadAndConfirm(file) {
       <button class="btn btn-secondary btn-sm" id="dup-ignore-btn" style="margin-top:8px">仍然新建</button>
     </div>` : "";
 
+  const jobOptions = jobs.map(j => {
+    const num = String(j.id).padStart(3, "0");
+    return `<option value="${j.id}">${j.title} @${num}</option>`;
+  }).join("");
+
   body.innerHTML = `
     ${res.warning ? `<div class="warning-banner" style="margin-bottom:16px">${res.warning}</div>` : ""}
     ${dupBanner}
     <input type="hidden" id="resume-path" value="${res.resume_path || ""}">
     <div class="form-grid">
-      <div class="form-group"><label>姓名 *</label><input id="f-name" value="${p.name || ""}"></div>
+      <div class="form-group"><label>姓名</label><input id="f-name" placeholder="中文名" value="${p.name || ""}"></div>
+      <div class="form-group"><label>英文名</label><input id="f-name-en" placeholder="English Name" value="${p.name_en || ""}"></div>
       <div class="form-group"><label>手机号</label><input id="f-phone" value="${p.phone || ""}"></div>
       <div class="form-group"><label>邮箱</label><input id="f-email" value="${p.email || ""}"></div>
       <div class="form-group"><label>年龄</label><input id="f-age" type="number" value="${p.age || ""}"></div>
-      <div class="form-group"><label>学历</label><input id="f-education" value="${p.education || ""}"></div>
-      <div class="form-group"><label>毕业院校</label><input id="f-school" value="${p.school || ""}"></div>
       <div class="form-group"><label>当前城市</label><input id="f-city" value="${p.city || ""}"></div>
-      <div class="form-group"><label>上家公司</label><input id="f-last-company" value="${p.last_company || ""}"></div>
-      <div class="form-group"><label>上家职位</label><input id="f-last-title" value="${p.last_title || ""}"></div>
       <div class="form-group"><label>工作年限</label><input id="f-years-exp" type="number" value="${p.years_exp || ""}"></div>
-      <div class="form-group"><label>技能标签（逗号分隔）</label><input id="f-tags" value="${(p.skill_tags || []).join(", ")}"></div>
       <div class="form-group"><label>来源渠道</label><input id="f-source" placeholder="如：Boss直聘、内推..."></div>
-      <div class="form-group form-full"><label>关联岗位（可选）</label>
+      <div class="form-group form-full"><label>投递岗位（可选）</label>
         <select id="f-job">
-          <option value="">-- 暂不关联岗位 --</option>
-          ${jobs.map(j => `<option value="${j.id}">${j.title}</option>`).join("")}
+          <option value="">-- 暂不投递岗位 --</option>
+          ${jobOptions}
         </select>
       </div>
       <div class="form-group form-full"><label>备注</label><textarea id="f-notes"></textarea></div>
+    </div>
+
+    <div style="margin-top:16px">
+      <div style="font-weight:600;font-size:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <span>教育经历</span>
+        <button type="button" id="add-edu-btn" class="btn btn-secondary btn-sm">+ 添加教育经历</button>
+      </div>
+      <div id="edu-blocks"></div>
+    </div>
+
+    <div style="margin-top:16px">
+      <div style="font-weight:600;font-size:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <span>工作经历</span>
+        <button type="button" id="add-work-btn" class="btn btn-secondary btn-sm">+ 添加工作经历</button>
+      </div>
+      <div id="work-blocks"></div>
     </div>`;
+
+  // 渲染 AI 解析出的积木块（按时间倒序）
+  const eduContainer = document.getElementById("edu-blocks");
+  const workContainer = document.getElementById("work-blocks");
+
+  function sortByPeriodDesc(list) {
+    return [...list].sort((a, b) => {
+      const getYear = p => parseInt((p || "").match(/\d{4}/g)?.slice(-1)[0] || "0");
+      return getYear(b.period) - getYear(a.period);
+    });
+  }
+
+  sortByPeriodDesc(p.education_list || []).forEach(edu => eduContainer.appendChild(renderEduBlock(edu)));
+  sortByPeriodDesc(p.work_experience || []).forEach(work => workContainer.appendChild(renderWorkBlock(work)));
+
+  document.getElementById("add-edu-btn").onclick = () => eduContainer.appendChild(renderEduBlock());
+  document.getElementById("add-work-btn").onclick = () => workContainer.appendChild(renderWorkBlock());
 
   // 查重：更新已有档案
   body.querySelectorAll(".dup-update-btn").forEach(btn => {
     btn.onclick = async () => {
       const existingId = btn.dataset.id;
-      const tags = document.getElementById("f-tags").value.split(",").map(t => t.trim()).filter(Boolean);
       const patch = {};
-      const fields = { name: "f-name", phone: "f-phone", email: "f-email", city: "f-city",
-        last_company: "f-last-company", last_title: "f-last-title", education: "f-education", school: "f-school" };
-      for (const [key, elId] of Object.entries(fields)) {
-        const val = document.getElementById(elId)?.value;
+      const name = document.getElementById("f-name").value.trim();
+      const nameEn = document.getElementById("f-name-en").value.trim();
+      if (name) patch.name = name;
+      if (nameEn) patch.name_en = nameEn;
+      const simpleFields = { phone: "f-phone", email: "f-email", city: "f-city", source: "f-source" };
+      for (const [key, elId] of Object.entries(simpleFields)) {
+        const val = document.getElementById(elId)?.value.trim();
         if (val) patch[key] = val;
       }
       const age = parseInt(document.getElementById("f-age").value);
       if (age) patch.age = age;
       const yrs = parseInt(document.getElementById("f-years-exp").value);
       if (yrs) patch.years_exp = yrs;
+      const tags = document.getElementById("f-tags").value.split(",").map(t => t.trim()).filter(Boolean);
       if (tags.length) patch.skill_tags = tags;
       const resumePath = document.getElementById("resume-path").value;
       if (resumePath) patch.resume_path = resumePath;
+      const eduList = collectBlocks(eduContainer, [{key:"degree",sel:".edu-degree"},{key:"school",sel:".edu-school"},{key:"major",sel:".edu-major"},{key:"period",sel:".edu-period"}]);
+      const workList = collectBlocks(workContainer, [{key:"company",sel:".work-company"},{key:"title",sel:".work-title"},{key:"period",sel:".work-period"}]);
+      if (eduList.length) patch.education_list = eduList;
+      if (workList.length) patch.work_experience = workList;
       await api.patch(`/api/candidates/${existingId}`, patch);
       overlay.classList.add("hidden");
       location.hash = `#/candidates/${existingId}`;
     };
   });
 
-  // 查重：忽略，仍然新建
   const ignoreBtn = document.getElementById("dup-ignore-btn");
-  if (ignoreBtn) {
-    ignoreBtn.onclick = () => document.getElementById("dup-banner")?.remove();
-  }
+  if (ignoreBtn) ignoreBtn.onclick = () => document.getElementById("dup-banner")?.remove();
 
   document.getElementById("modal-cancel").onclick = () => overlay.classList.add("hidden");
   document.getElementById("modal-save").onclick = async () => {
     const name = document.getElementById("f-name").value.trim();
-    if (!name) { alert("姓名不能为空"); return; }
+    const nameEn = document.getElementById("f-name-en").value.trim();
+    if (!name && !nameEn) { alert("姓名不能为空（中文名或英文名至少填一个）"); return; }
 
     const tags = document.getElementById("f-tags").value.split(",").map(t => t.trim()).filter(Boolean);
+    const eduList = collectBlocks(eduContainer, [{key:"degree",sel:".edu-degree"},{key:"school",sel:".edu-school"},{key:"major",sel:".edu-major"},{key:"period",sel:".edu-period"}]);
+    const workList = collectBlocks(workContainer, [{key:"company",sel:".work-company"},{key:"title",sel:".work-title"},{key:"period",sel:".work-period"}]);
+
     const candidate = await api.post("/api/candidates", {
-      name,
-      phone: document.getElementById("f-phone").value || null,
-      email: document.getElementById("f-email").value || null,
+      name: name || null,
+      name_en: nameEn || null,
+      phone: document.getElementById("f-phone").value.trim() || null,
+      email: document.getElementById("f-email").value.trim() || null,
       age: parseInt(document.getElementById("f-age").value) || null,
-      education: document.getElementById("f-education").value || null,
-      school: document.getElementById("f-school").value || null,
-      city: document.getElementById("f-city").value || null,
-      last_company: document.getElementById("f-last-company").value || null,
-      last_title: document.getElementById("f-last-title").value || null,
+      city: document.getElementById("f-city").value.trim() || null,
       years_exp: parseInt(document.getElementById("f-years-exp").value) || null,
-      skill_tags: tags,
-      source: document.getElementById("f-source").value || null,
-      notes: document.getElementById("f-notes").value || null,
+      source: document.getElementById("f-source").value.trim() || null,
+      notes: document.getElementById("f-notes").value.trim() || null,
       resume_path: document.getElementById("resume-path").value || null,
+      education_list: eduList,
+      work_experience: workList,
     });
 
     const jobId = document.getElementById("f-job").value;
@@ -318,10 +399,10 @@ async function renderCandidateProfile(el, id) {
     </div>
     <div class="card">
       <div class="profile-header">
-        <div class="profile-avatar">${c.name[0]}</div>
+        <div class="profile-avatar">${(c.name || c.name_en || "?")[0]}</div>
         <div class="profile-info">
-          <h1>${c.name}</h1>
-          <p>${[c.last_title, c.last_company].filter(Boolean).join(" @ ") || "暂无工作信息"}</p>
+          <h1>${c.name || ""}${c.name_en ? `<span style="font-size:16px;color:#888;margin-left:8px">${c.name_en}</span>` : ""}</h1>
+          <p>${(c.work_experience || []).length > 0 ? `${c.work_experience[0].title || ""} @ ${c.work_experience[0].company || ""}` : [c.last_title, c.last_company].filter(Boolean).join(" @ ") || "暂无工作信息"}</p>
           <p style="margin-top:4px">${(c.skill_tags || []).map(t => `<span class="tag">${t}</span>`).join("")}</p>
         </div>
         <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-start">
@@ -332,7 +413,6 @@ async function renderCandidateProfile(el, id) {
       <div class="form-grid">
         ${[
           ["手机", c.phone], ["邮箱", c.email], ["年龄", c.age],
-          ["学历", [c.education, c.school].filter(Boolean).join(" · ")],
           ["城市", c.city], ["工作年限", c.years_exp ? c.years_exp + "年" : null],
           ["来源", c.source],
         ].map(([label, val]) => val ? `<div class="form-group"><label>${label}</label><div style="font-size:14px;padding:8px 0">${val}</div></div>` : "").join("")}
@@ -346,6 +426,26 @@ async function renderCandidateProfile(el, id) {
         </div>
       </div>
     </div>
+
+    ${(c.education_list || []).length > 0 ? `
+    <div class="card">
+      <h2>教育经历</h2>
+      ${c.education_list.map(e => `
+        <div style="padding:10px 0;border-bottom:1px solid #f0f0f0">
+          <div style="font-weight:600;font-size:14px">${e.degree || ""}${e.school ? ` · ${e.school}` : ""}${e.major ? ` · ${e.major}` : ""}</div>
+          ${e.period ? `<div style="font-size:12px;color:#999;margin-top:2px">${e.period}</div>` : ""}
+        </div>`).join("")}
+    </div>` : ""}
+
+    ${(c.work_experience || []).length > 0 ? `
+    <div class="card">
+      <h2>工作经历</h2>
+      ${c.work_experience.map(w => `
+        <div style="padding:10px 0;border-bottom:1px solid #f0f0f0">
+          <div style="font-weight:600;font-size:14px">${w.title || ""}${w.company ? ` @ ${w.company}` : ""}</div>
+          ${w.period ? `<div style="font-size:12px;color:#999;margin-top:2px">${w.period}</div>` : ""}
+        </div>`).join("")}
+    </div>` : ""}
 
     <div class="card">
       <h2>备注</h2>
@@ -392,42 +492,55 @@ async function renderCandidateProfile(el, id) {
     body.innerHTML = `
       <div class="form-grid">
         <div class="form-group"><label>姓名</label><input id="e-name" value="${c.name || ""}"></div>
+        <div class="form-group"><label>英文名</label><input id="e-name-en" value="${c.name_en || ""}"></div>
         <div class="form-group"><label>手机</label><input id="e-phone" value="${c.phone || ""}"></div>
         <div class="form-group"><label>邮箱</label><input id="e-email" value="${c.email || ""}"></div>
         <div class="form-group"><label>年龄</label><input id="e-age" type="number" value="${c.age || ""}"></div>
-        <div class="form-group"><label>学历</label><input id="e-education" value="${c.education || ""}"></div>
-        <div class="form-group"><label>毕业院校</label><input id="e-school" value="${c.school || ""}"></div>
         <div class="form-group"><label>城市</label><input id="e-city" value="${c.city || ""}"></div>
-        <div class="form-group"><label>上家公司</label><input id="e-last-company" value="${c.last_company || ""}"></div>
-        <div class="form-group"><label>上家职位</label><input id="e-last-title" value="${c.last_title || ""}"></div>
         <div class="form-group"><label>工作年限</label><input id="e-years-exp" type="number" value="${c.years_exp || ""}"></div>
-        <div class="form-group form-full"><label>技能标签（逗号分隔）</label><input id="e-tags" value="${(c.skill_tags || []).join(", ")}"></div>
         <div class="form-group"><label>来源渠道</label><input id="e-source" value="${c.source || ""}"></div>
+      </div>
+      <div style="margin-top:16px">
+        <div style="font-weight:600;font-size:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+          <span>教育经历</span>
+          <button type="button" id="e-add-edu" class="btn btn-secondary btn-sm">+ 添加</button>
+        </div>
+        <div id="e-edu-blocks"></div>
+      </div>
+      <div style="margin-top:16px">
+        <div style="font-weight:600;font-size:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+          <span>工作经历</span>
+          <button type="button" id="e-add-work" class="btn btn-secondary btn-sm">+ 添加</button>
+        </div>
+        <div id="e-work-blocks"></div>
       </div>`;
+
+    const eEduContainer = document.getElementById("e-edu-blocks");
+    const eWorkContainer = document.getElementById("e-work-blocks");
+    (c.education_list || []).forEach(edu => eEduContainer.appendChild(renderEduBlock(edu)));
+    (c.work_experience || []).forEach(work => eWorkContainer.appendChild(renderWorkBlock(work)));
+    document.getElementById("e-add-edu").onclick = () => eEduContainer.appendChild(renderEduBlock());
+    document.getElementById("e-add-work").onclick = () => eWorkContainer.appendChild(renderWorkBlock());
+
     overlay.classList.remove("hidden");
 
-    document.getElementById("modal-cancel").onclick = () => {
-      overlay.classList.add("hidden");
-      document.querySelector("#modal-overlay h2").textContent = "确认候选人信息";
-    };
+    document.getElementById("modal-cancel").onclick = () => overlay.classList.add("hidden");
     document.getElementById("modal-save").onclick = async () => {
-      const tags = document.getElementById("e-tags").value.split(",").map(s => s.trim()).filter(Boolean);
+      const eduList = collectBlocks(eEduContainer, [{key:"degree",sel:".edu-degree"},{key:"school",sel:".edu-school"},{key:"major",sel:".edu-major"},{key:"period",sel:".edu-period"}]);
+      const workList = collectBlocks(eWorkContainer, [{key:"company",sel:".work-company"},{key:"title",sel:".work-title"},{key:"period",sel:".work-period"}]);
       await api.patch(`/api/candidates/${id}`, {
-        name: document.getElementById("e-name").value,
+        name: document.getElementById("e-name").value || null,
+        name_en: document.getElementById("e-name-en").value || null,
         phone: document.getElementById("e-phone").value || null,
         email: document.getElementById("e-email").value || null,
         age: parseInt(document.getElementById("e-age").value) || null,
-        education: document.getElementById("e-education").value || null,
-        school: document.getElementById("e-school").value || null,
         city: document.getElementById("e-city").value || null,
-        last_company: document.getElementById("e-last-company").value || null,
-        last_title: document.getElementById("e-last-title").value || null,
         years_exp: parseInt(document.getElementById("e-years-exp").value) || null,
-        skill_tags: tags,
         source: document.getElementById("e-source").value || null,
+        education_list: eduList,
+        work_experience: workList,
       });
       overlay.classList.add("hidden");
-      document.querySelector("#modal-overlay h2").textContent = "确认候选人信息";
       renderCandidateProfile(el, id);
     };
   };
@@ -458,86 +571,72 @@ async function renderCandidateProfile(el, id) {
 async function renderPipelineTracking(el) {
   el.innerHTML = `
     <div class="page-header"><h1>流程跟进</h1></div>
+    <div class="filter-bar" style="margin-bottom:8px">
+      <input id="pt-search" type="text" placeholder="搜索候选人姓名..." style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none">
+    </div>
     <div class="filter-bar" style="margin-bottom:16px">
-      <select id="pt-group" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
-        <option value="job">按岗位分组</option>
-        <option value="stage">按阶段分组</option>
-      </select>
       <select id="pt-job-filter" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
         <option value="">全部岗位</option>
       </select>
+      <select id="pt-stage-filter" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
+        <option value="">全部阶段</option>
+      </select>
     </div>
-    <div id="pt-content"><span class="spinner" style="margin:24px"></span></div>`;
+    <div class="card" style="padding:0;overflow:hidden">
+      <div id="pt-content"><span class="spinner" style="margin:24px"></span></div>
+    </div>`;
 
   const links = await api.get("/api/pipeline/active");
   const contentEl = document.getElementById("pt-content");
   if (!contentEl) return;
 
-  // 填充岗位筛选
+  // 填充岗位/阶段下拉
   const jobFilter = document.getElementById("pt-job-filter");
-  const jobs = [...new Map(links.map(l => [l.job_id, l.job_title])).entries()];
-  jobs.forEach(([id, title]) => {
+  [...new Map(links.map(l => [l.job_id, l.job_title])).entries()].forEach(([id, title]) => {
     const opt = document.createElement("option");
     opt.value = id; opt.textContent = title;
     jobFilter.appendChild(opt);
   });
+  const stageFilter = document.getElementById("pt-stage-filter");
+  [...new Set(links.map(l => l.stage).filter(Boolean))].forEach(s => {
+    const opt = document.createElement("option");
+    opt.value = s; opt.textContent = s;
+    stageFilter.appendChild(opt);
+  });
 
   const renderContent = () => {
-    const groupBy = document.getElementById("pt-group")?.value || "job";
+    const q = document.getElementById("pt-search")?.value.trim().toLowerCase() || "";
     const jobId = document.getElementById("pt-job-filter")?.value || "";
-    let filtered = jobId ? links.filter(l => String(l.job_id) === jobId) : links;
+    const stage = document.getElementById("pt-stage-filter")?.value || "";
+    let filtered = links;
+    if (q) filtered = filtered.filter(l => l.candidate_name.toLowerCase().includes(q));
+    if (jobId) filtered = filtered.filter(l => String(l.job_id) === jobId);
+    if (stage) filtered = filtered.filter(l => l.stage === stage);
 
     if (!filtered.length) {
       contentEl.innerHTML = '<div class="empty-state">暂无进行中的人选</div>';
       return;
     }
 
-    const groups = {};
-    filtered.forEach(l => {
-      const key = groupBy === "job" ? `${l.job_title}||${l.job_id}` : (l.stage || "未知阶段");
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(l);
-    });
-
-    contentEl.innerHTML = Object.entries(groups).map(([key, items]) => {
-      const label = groupBy === "job" ? key.split("||")[0] : key;
-      const jobId = groupBy === "job" ? key.split("||")[1] : null;
-      const rows = items.map(l => {
-        const days = l.days_since_update !== null ? (l.days_since_update === 0 ? "今天" : `${l.days_since_update}天前`) : "";
-        const stageCell = groupBy === "job"
-          ? `<span class="tag" style="font-size:11px">${l.stage || "-"}</span>`
-          : `<a href="#/jobs/pipeline/${l.job_id}" style="font-size:12px;color:#555;text-decoration:none">${l.job_title}</a>`;
+    contentEl.innerHTML = `<table class="table">
+      <thead><tr><th>候选人</th><th>岗位</th><th>阶段</th><th>最后更新</th><th>操作</th></tr></thead>
+      <tbody>${filtered.map(l => {
+        const days = l.days_since_update !== null ? (l.days_since_update === 0 ? "今天" : `${l.days_since_update}天前`) : "-";
         return `<tr>
           <td><a href="#/candidates/${l.candidate_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${l.candidate_name}</a></td>
-          <td>${stageCell}</td>
+          <td style="color:#555;font-size:13px">${l.job_title}</td>
+          <td><span class="tag" style="font-size:11px">${l.stage || "-"}</span></td>
           <td style="color:#888;font-size:13px">${days}</td>
+          <td><a href="#/jobs/pipeline/${l.job_id}" class="btn btn-secondary btn-sm">看板</a></td>
         </tr>`;
-      }).join("");
-
-      const thead = groupBy === "job"
-        ? `<thead><tr><th>姓名</th><th>阶段</th><th>最后更新</th></tr></thead>`
-        : `<thead><tr><th>姓名</th><th>岗位</th><th>最后更新</th></tr></thead>`;
-
-      const titleLink = groupBy === "job"
-        ? `<a href="#/jobs/pipeline/${jobId}" style="color:#1a1a2e;text-decoration:none;font-weight:700">${label}</a>`
-        : `<span style="font-weight:700">${label}</span>`;
-
-      return `<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
-        <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center">
-          ${titleLink}
-          <span class="tag">${items.length} 人</span>
-        </div>
-        <table class="table" style="margin:0">
-          ${thead}
-          <tbody>${rows}</tbody>
-        </table>
-      </div>`;
-    }).join("");
+      }).join("")}
+      </tbody></table>`;
   };
 
   renderContent();
-  document.getElementById("pt-group").onchange = renderContent;
+  document.getElementById("pt-search").oninput = renderContent;
   document.getElementById("pt-job-filter").onchange = renderContent;
+  document.getElementById("pt-stage-filter").onchange = renderContent;
 }
 
 // ── Talent Pool ───────────────────────────────────────────────────────────────

@@ -18,6 +18,9 @@ class Candidate(Base):
     last_company = Column(String)
     last_title = Column(String)
     years_exp = Column(Integer)
+    name_en = Column(String)
+    education_list = Column(JSON, default=list)   # [{degree, school, major, period}]
+    work_experience = Column(JSON, default=list)  # [{company, title, period}]
     skill_tags = Column(JSON, default=list)
     source = Column(String)
     notes = Column(Text)
