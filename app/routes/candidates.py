@@ -75,6 +75,34 @@ def create_candidate(data: CandidateCreate, db: Session = Depends(get_db)):
     db.flush()
     db.add(HistoryEntry(candidate_id=candidate.id, event_type="created", detail="候选人档案创建"))
     db.commit()
+
+
+class DuplicateCheckRequest(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    last_company: Optional[str] = None
+
+
+@router.post("/check-duplicate")
+def check_duplicate(data: DuplicateCheckRequest, db: Session = Depends(get_db)):
+    matches = []
+    seen_ids = set()
+
+    def add_matches(candidates):
+        for c in candidates:
+            if c.id not in seen_ids:
+                seen_ids.add(c.id)
+                matches.append({"id": c.id, "name": c.name, "phone": c.phone, "email": c.email, "last_company": c.last_company})
+
+    if data.phone:
+        add_matches(db.query(Candidate).filter(Candidate.phone == data.phone).all())
+    if data.email:
+        add_matches(db.query(Candidate).filter(Candidate.email == data.email).all())
+    if data.name and data.last_company:
+        add_matches(db.query(Candidate).filter(Candidate.name == data.name, Candidate.last_company == data.last_company).all())
+
+    return {"matches": matches}
     db.refresh(candidate)
     return candidate_to_dict(candidate)
 
@@ -106,7 +134,15 @@ def list_candidates(
     candidates = query.order_by(Candidate.created_at.desc()).all()
     if tag:
         candidates = [c for c in candidates if tag in (c.skill_tags or [])]
-    return [candidate_to_dict(c) for c in candidates]
+    result = []
+    for c in candidates:
+        d = candidate_to_dict(c)
+        d["active_links"] = [
+            {"job_id": lnk.job_id, "job_title": lnk.job.title if lnk.job else None, "stage": lnk.stage}
+            for lnk in c.job_links if not lnk.outcome
+        ]
+        result.append(d)
+    return result
 
 
 @router.get("/{candidate_id}")

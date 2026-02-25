@@ -1,3 +1,9 @@
+## REMOVED Requirements
+
+### Requirement: 首页支持人视图和岗位视图切换
+**Reason**: 人视图内容与"流程跟进"页面高度重叠，双 tab 增加认知负担，首页应聚焦快速概览。
+**Migration**: 使用侧边栏导航进入"流程跟进"页面查看按阶段分组的活跃人选。
+
 ## ADDED Requirements
 
 ### Requirement: 首页单视图直接展示

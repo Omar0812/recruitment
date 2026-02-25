@@ -35,31 +35,22 @@ window.addEventListener("DOMContentLoaded", async () => {
 async function renderDashboard(el) {
   el.innerHTML = `
     <div class="page-header"><h1>首页</h1></div>
-    <div style="display:flex;gap:8px;margin-bottom:20px">
-      <button class="btn btn-primary btn-sm" id="tab-job-view">岗位视图</button>
-      <button class="btn btn-secondary btn-sm" id="tab-people-view">人视图</button>
+    <div class="upload-zone" id="upload-zone">
+      <div class="upload-icon">📄</div>
+      <strong>拖拽简历到这里，或点击上传</strong>
+      <p>支持 PDF / Word / 图片（PNG、JPG）</p>
+      <input type="file" id="file-input" style="display:none" accept=".pdf,.docx,.doc,.png,.jpg,.jpeg" multiple>
     </div>
-    <div id="dashboard-job-view">
-      <div class="upload-zone" id="upload-zone">
-        <div class="upload-icon">📄</div>
-        <strong>拖拽简历到这里，或点击上传</strong>
-        <p>支持 PDF / Word / 图片（PNG、JPG）</p>
-        <input type="file" id="file-input" style="display:none" accept=".pdf,.docx,.doc,.png,.jpg,.jpeg" multiple>
-      </div>
-      <div class="dashboard-grid">
-        <div class="card" id="stale-card"><h2>今日待跟进</h2><div id="stale-list"><span class="spinner"></span></div></div>
-        <div class="card" id="health-card"><h2>岗位健康度</h2><div id="health-list"><span class="spinner"></span></div></div>
-      </div>
-      <div class="card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-          <h2 style="margin:0">AI 建议</h2>
-          <button class="btn btn-secondary btn-sm" id="refresh-insights">刷新建议</button>
-        </div>
-        <div id="insights-list"><p style="color:#999;font-size:14px">点击"刷新建议"获取 AI 洞察</p></div>
-      </div>
+    <div class="dashboard-grid">
+      <div class="card" id="stale-card"><h2>今日待跟进</h2><div id="stale-list"><span class="spinner"></span></div></div>
+      <div class="card" id="health-card"><h2>岗位健康度</h2><div id="health-list"><span class="spinner"></span></div></div>
     </div>
-    <div id="dashboard-people-view" class="hidden">
-      <div id="people-view-content"><span class="spinner" style="margin:24px"></span></div>
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <h2 style="margin:0">AI 建议</h2>
+        <button class="btn btn-secondary btn-sm" id="refresh-insights">刷新建议</button>
+      </div>
+      <div id="insights-list"><p style="color:#999;font-size:14px">点击"刷新建议"获取 AI 洞察</p></div>
     </div>`;
 
   setupUploadZone();
@@ -107,52 +98,6 @@ async function renderDashboard(el) {
       insightsList.innerHTML = res.insights.map(i => `<div class="insight-item">${i}</div>`).join("");
     }
   };
-
-  // Tab 切换
-  const jobView = document.getElementById("dashboard-job-view");
-  const peopleView = document.getElementById("dashboard-people-view");
-  const tabJob = document.getElementById("tab-job-view");
-  const tabPeople = document.getElementById("tab-people-view");
-
-  tabJob.onclick = () => {
-    jobView.classList.remove("hidden");
-    peopleView.classList.add("hidden");
-    tabJob.className = "btn btn-primary btn-sm";
-    tabPeople.className = "btn btn-secondary btn-sm";
-  };
-
-  tabPeople.onclick = async () => {
-    jobView.classList.add("hidden");
-    peopleView.classList.remove("hidden");
-    tabJob.className = "btn btn-secondary btn-sm";
-    tabPeople.className = "btn btn-primary btn-sm";
-
-    const contentEl = document.getElementById("people-view-content");
-    const links = await api.get("/api/pipeline/active");
-    if (!links.length) {
-      contentEl.innerHTML = '<div class="empty-state">暂无进行中的人选</div>';
-      return;
-    }
-    const stages = [...new Set(links.map(l => l.stage).filter(Boolean))];
-    contentEl.innerHTML = stages.map(stage => {
-      const items = links.filter(l => l.stage === stage);
-      const rows = items.map(l => {
-        const days = l.days_since_update !== null ? (l.days_since_update === 0 ? "今天" : `${l.days_since_update}天前`) : "";
-        return `<tr>
-          <td><a href="#/candidates/${l.candidate_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${l.candidate_name}</a></td>
-          <td><a href="#/jobs/pipeline/${l.job_id}" style="color:#555;font-size:13px">${l.job_title}</a></td>
-          <td style="color:#888;font-size:13px">${days}</td>
-        </tr>`;
-      }).join("");
-      return `<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
-        <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid #eee;display:flex;justify-content:space-between">
-          <span style="font-weight:700">${stage}</span>
-          <span class="tag">${items.length} 人</span>
-        </div>
-        <table class="table" style="margin:0"><tbody>${rows}</tbody></table>
-      </div>`;
-    }).join("");
-  };
 }
 
 // ── Upload zone ───────────────────────────────────────────────────────────────
@@ -197,10 +142,31 @@ async function uploadAndConfirm(file) {
   }
 
   const p = res.parsed || {};
-  const jobs = await api.get("/api/jobs");
+  const [jobs, dupRes] = await Promise.all([
+    api.get("/api/jobs"),
+    api.post("/api/candidates/check-duplicate", {
+      name: p.name || null,
+      phone: p.phone || null,
+      email: p.email || null,
+      last_company: p.last_company || null,
+    }),
+  ]);
+
+  const dupMatches = dupRes.matches || [];
+  const dupBanner = dupMatches.length ? `
+    <div id="dup-banner" style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;margin-bottom:16px">
+      <div style="font-weight:600;color:#854d0e;margin-bottom:8px">⚠️ 检测到可能重复的候选人：</div>
+      ${dupMatches.map(m => `
+        <div style="font-size:13px;color:#555;margin-bottom:4px">
+          <strong>${m.name}</strong>${m.phone ? " · " + m.phone : ""}${m.email ? " · " + m.email : ""}${m.last_company ? " · " + m.last_company : ""}
+          <button class="btn btn-primary btn-sm dup-update-btn" data-id="${m.id}" style="margin-left:8px">更新已有档案</button>
+        </div>`).join("")}
+      <button class="btn btn-secondary btn-sm" id="dup-ignore-btn" style="margin-top:8px">仍然新建</button>
+    </div>` : "";
 
   body.innerHTML = `
     ${res.warning ? `<div class="warning-banner" style="margin-bottom:16px">${res.warning}</div>` : ""}
+    ${dupBanner}
     <input type="hidden" id="resume-path" value="${res.resume_path || ""}">
     <div class="form-grid">
       <div class="form-group"><label>姓名 *</label><input id="f-name" value="${p.name || ""}"></div>
@@ -223,6 +189,37 @@ async function uploadAndConfirm(file) {
       </div>
       <div class="form-group form-full"><label>备注</label><textarea id="f-notes"></textarea></div>
     </div>`;
+
+  // 查重：更新已有档案
+  body.querySelectorAll(".dup-update-btn").forEach(btn => {
+    btn.onclick = async () => {
+      const existingId = btn.dataset.id;
+      const tags = document.getElementById("f-tags").value.split(",").map(t => t.trim()).filter(Boolean);
+      const patch = {};
+      const fields = { name: "f-name", phone: "f-phone", email: "f-email", city: "f-city",
+        last_company: "f-last-company", last_title: "f-last-title", education: "f-education", school: "f-school" };
+      for (const [key, elId] of Object.entries(fields)) {
+        const val = document.getElementById(elId)?.value;
+        if (val) patch[key] = val;
+      }
+      const age = parseInt(document.getElementById("f-age").value);
+      if (age) patch.age = age;
+      const yrs = parseInt(document.getElementById("f-years-exp").value);
+      if (yrs) patch.years_exp = yrs;
+      if (tags.length) patch.skill_tags = tags;
+      const resumePath = document.getElementById("resume-path").value;
+      if (resumePath) patch.resume_path = resumePath;
+      await api.patch(`/api/candidates/${existingId}`, patch);
+      overlay.classList.add("hidden");
+      location.hash = `#/candidates/${existingId}`;
+    };
+  });
+
+  // 查重：忽略，仍然新建
+  const ignoreBtn = document.getElementById("dup-ignore-btn");
+  if (ignoreBtn) {
+    ignoreBtn.onclick = () => document.getElementById("dup-banner")?.remove();
+  }
 
   document.getElementById("modal-cancel").onclick = () => overlay.classList.add("hidden");
   document.getElementById("modal-save").onclick = async () => {
@@ -507,14 +504,19 @@ async function renderPipelineTracking(el) {
       const jobId = groupBy === "job" ? key.split("||")[1] : null;
       const rows = items.map(l => {
         const days = l.days_since_update !== null ? (l.days_since_update === 0 ? "今天" : `${l.days_since_update}天前`) : "";
-        const stageTag = groupBy === "job" ? `<span class="tag" style="font-size:11px">${l.stage || "-"}</span>` : `<span style="font-size:12px;color:#888">${l.job_title}</span>`;
+        const stageCell = groupBy === "job"
+          ? `<span class="tag" style="font-size:11px">${l.stage || "-"}</span>`
+          : `<a href="#/jobs/pipeline/${l.job_id}" style="font-size:12px;color:#555;text-decoration:none">${l.job_title}</a>`;
         return `<tr>
           <td><a href="#/candidates/${l.candidate_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${l.candidate_name}</a></td>
-          <td>${stageTag}</td>
+          <td>${stageCell}</td>
           <td style="color:#888;font-size:13px">${days}</td>
-          <td><a href="#/jobs/pipeline/${l.job_id}" class="btn btn-secondary btn-sm">看板</a></td>
         </tr>`;
       }).join("");
+
+      const thead = groupBy === "job"
+        ? `<thead><tr><th>姓名</th><th>阶段</th><th>最后更新</th></tr></thead>`
+        : `<thead><tr><th>姓名</th><th>岗位</th><th>最后更新</th></tr></thead>`;
 
       const titleLink = groupBy === "job"
         ? `<a href="#/jobs/pipeline/${jobId}" style="color:#1a1a2e;text-decoration:none;font-weight:700">${label}</a>`
@@ -526,6 +528,7 @@ async function renderPipelineTracking(el) {
           <span class="tag">${items.length} 人</span>
         </div>
         <table class="table" style="margin:0">
+          ${thead}
           <tbody>${rows}</tbody>
         </table>
       </div>`;
@@ -591,12 +594,15 @@ async function renderTalentPool(el) {
     }
 
     tableEl.innerHTML = `<table class="table">
-      <thead><tr><th>姓名</th><th>技能标签</th><th>跟进状态</th><th>关联岗位</th><th>来源</th><th>操作</th></tr></thead>
+      <thead><tr><th>姓名</th><th>技能标签</th><th>跟进状态</th><th>当前岗位·阶段</th><th>来源</th><th>操作</th></tr></thead>
       <tbody>${candidates.map(c => {
         const tags = (c.skill_tags || []).slice(0, 3).map(t => `<span class="tag">${t}</span>`).join(" ");
         const fs = c.followup_status;
         const fsTag = fs ? `<span class="tag" style="${followupColor[fs] || ""}">${fs}</span>` : "-";
-        const jobCount = (c.job_links || []).length;
+        const activeLinks = c.active_links || [];
+        const activeStage = activeLinks.length
+          ? activeLinks.map(l => `<div style="font-size:12px;color:#555">${l.job_title || ""}${l.stage ? " · " + l.stage : ""}</div>`).join("")
+          : "-";
         return `<tr>
           <td><a href="#/candidates/${c.id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${c.name}</a>
             ${c.last_title ? `<div style="font-size:12px;color:#888">${c.last_title}${c.last_company ? " @ " + c.last_company : ""}</div>` : ""}
@@ -610,7 +616,7 @@ async function renderTalentPool(el) {
               <option value="暂不考虑" ${fs === "暂不考虑" ? "selected" : ""}>暂不考虑</option>
             </select>
           </td>
-          <td>${jobCount > 0 ? `${jobCount} 个岗位` : "-"}</td>
+          <td>${activeStage}</td>
           <td>${c.source || "-"}</td>
           <td>
             <div style="display:flex;gap:6px">

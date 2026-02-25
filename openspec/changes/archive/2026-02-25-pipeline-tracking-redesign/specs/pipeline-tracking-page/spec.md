@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: 流程跟进页面展示所有活跃人选
 系统 SHALL 提供流程跟进页面，展示所有当前在招聘流程中（outcome 为 NULL）的候选人及其岗位和阶段。
