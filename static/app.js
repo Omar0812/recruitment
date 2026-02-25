@@ -470,6 +470,7 @@ async function renderCandidateProfile(el, id) {
   const firstEdu = (c.education_list || [])[0] || {};
   const activeLinks = (c.job_links || []).filter(l => !l.outcome);
   const latestActive = activeLinks.sort((a,b) => (b.created_at||"").localeCompare(a.created_at||""))[0];
+  const latestInactive = !latestActive ? (c.job_links||[]).filter(l=>l.outcome).sort((a,b)=>(b.created_at||"").localeCompare(a.created_at||""))[0] : null;
 
   el.innerHTML = `
     <div class="page-header">
@@ -492,7 +493,9 @@ async function renderCandidateProfile(el, id) {
           <div style="margin-top:8px;font-size:13px">
             ${latestActive
               ? `<span style="color:#555">当前流程：</span><a href="#/jobs/pipeline/${latestActive.job_id}" style="color:#1a1a2e;font-weight:600">${latestActive.job_title}</a> → <span class="tag" style="font-size:11px">${latestActive.stage||"-"}</span>`
-              : `<span style="color:#bbb">当前流程：暂无</span>`}
+              : latestInactive
+                ? `<span style="color:#bbb">最近流程：</span><a href="#/jobs/pipeline/${latestInactive.job_id}" style="color:#888;font-weight:600">${latestInactive.job_title}</a> · <span class="tag" style="font-size:11px;background:#fee2e2;color:#dc2626">${latestInactive.outcome==="rejected" ? "淘汰" + (latestInactive.rejection_reason ? "（"+latestInactive.rejection_reason+"）" : "") : "已退出"}</span>`
+                : `<span style="color:#bbb">当前流程：暂无</span>`}
           </div>
         </div>
         <div style="display:flex;gap:8px;align-items:flex-start;flex-shrink:0">
@@ -553,13 +556,16 @@ async function renderCandidateProfile(el, id) {
           <button class="btn btn-primary btn-sm" id="link-job-btn">+ 新增投递</button>
         </div>
         ${(c.job_links||[]).length ? `<table class="table" style="margin:0">
-          <thead><tr><th>岗位</th><th>阶段</th><th>状态</th><th>时间</th><th>操作</th></tr></thead>
+          <thead><tr><th></th><th>岗位</th><th>阶段</th><th>状态</th><th>时间</th><th>操作</th></tr></thead>
           <tbody id="job-links-tbody">
             ${c.job_links.map(lnk => {
               const isActive = !lnk.outcome;
               const statusLabel = lnk.outcome === "rejected" ? "淘汰" : lnk.outcome === "withdrawn" ? "已退出" : "进行中";
               const statusStyle = lnk.outcome === "rejected" ? "background:#fee2e2;color:#dc2626" : lnk.outcome === "withdrawn" ? "background:#f3f4f6;color:#6b7280" : "background:#dcfce7;color:#166534";
               return `<tr data-link-id="${lnk.id}" data-job-id="${lnk.job_id}">
+                <td style="width:28px;padding:8px 4px 8px 12px">
+                  <button class="iv-expand-btn" data-link-id="${lnk.id}" style="background:none;border:none;cursor:pointer;font-size:12px;color:#888;padding:2px 4px" title="查看面试记录">▶</button>
+                </td>
                 <td><a href="#/jobs/pipeline/${lnk.job_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${lnk.job_title||"未知岗位"}</a></td>
                 <td><span class="tag" style="font-size:11px">${lnk.stage||"-"}</span></td>
                 <td><span class="tag" style="${statusStyle}">${statusLabel}</span></td>
@@ -569,6 +575,11 @@ async function renderCandidateProfile(el, id) {
                     <button class="btn btn-secondary btn-sm transfer-btn" data-link-id="${lnk.id}">转移岗位</button>
                     <button class="btn btn-danger btn-sm reject-link-btn" data-link-id="${lnk.id}">淘汰</button>
                   </div>` : ""}
+                </td>
+              </tr>
+              <tr class="iv-detail-row hidden" id="iv-detail-${lnk.id}">
+                <td colspan="6" style="padding:0 12px 12px 40px;background:#fafafa">
+                  <div id="iv-detail-content-${lnk.id}" style="font-size:13px;color:#555"></div>
                 </td>
               </tr>`;
             }).join("")}
@@ -700,6 +711,47 @@ async function renderCandidateProfile(el, id) {
       renderCandidateProfile(el, id);
     });
   };
+
+  // 投递记录展开面试记录（懒加载）
+  const ivCache = {};
+  document.querySelectorAll(".iv-expand-btn").forEach(btn => {
+    btn.onclick = async () => {
+      const linkId = btn.dataset.linkId;
+      const detailRow = document.getElementById(`iv-detail-${linkId}`);
+      const contentEl = document.getElementById(`iv-detail-content-${linkId}`);
+      const isHidden = detailRow.classList.toggle("hidden");
+      btn.textContent = isHidden ? "▶" : "▼";
+      if (!isHidden && !ivCache[linkId]) {
+        contentEl.innerHTML = '<span class="spinner"></span>';
+        const records = await api.get(`/api/interviews?link_id=${linkId}`);
+        ivCache[linkId] = records;
+        if (!records.length) {
+          contentEl.innerHTML = '<div style="padding:8px 0;color:#bbb">暂无面试记录</div>';
+        } else {
+          contentEl.innerHTML = `<table style="width:100%;border-collapse:collapse;margin-top:6px">
+            <thead><tr style="font-size:12px;color:#999;border-bottom:1px solid #eee">
+              <th style="padding:4px 8px;font-weight:500;text-align:left">轮次</th>
+              <th style="padding:4px 8px;font-weight:500;text-align:left">面试官</th>
+              <th style="padding:4px 8px;font-weight:500;text-align:left">时间</th>
+              <th style="padding:4px 8px;font-weight:500;text-align:left">评分</th>
+              <th style="padding:4px 8px;font-weight:500;text-align:left">结论</th>
+              <th style="padding:4px 8px;font-weight:500;text-align:left">评语</th>
+            </tr></thead>
+            <tbody>${records.map(r => `<tr style="font-size:13px;border-bottom:1px solid #f5f5f5">
+              <td style="padding:6px 8px">${r.round||"-"}</td>
+              <td style="padding:6px 8px;color:#555">${r.interviewer||"-"}</td>
+              <td style="padding:6px 8px;color:#888;font-size:12px">${r.interview_time ? formatTime(r.interview_time) : "-"}</td>
+              <td style="padding:6px 8px">${r.score ? "★".repeat(r.score) + '<span style="color:#ddd">' + "★".repeat(5-r.score) + "</span>" : "-"}</td>
+              <td style="padding:6px 8px">${r.conclusion ? `<span class="tag" style="font-size:11px;${r.conclusion==="通过"?"background:#dcfce7;color:#166534":r.conclusion==="淘汰"?"background:#fee2e2;color:#dc2626":"background:#fef9c3;color:#854d0e"}">${r.conclusion}</span>` : "-"}</td>
+              <td style="padding:6px 8px;color:#666;font-size:12px">${r.comment||"-"}</td>
+            </tr>`).join("")}</tbody>
+          </table>`;
+        }
+      } else if (!isHidden && ivCache[linkId]) {
+        // 已缓存，直接显示（内容已在 DOM 中）
+      }
+    };
+  });
 
   // 新增投递
   document.getElementById("link-job-btn").onclick = async () => {
@@ -1411,16 +1463,28 @@ async function renderPipeline(el, jobId) {
       <a href="#/jobs/edit/${jobId}" class="btn btn-secondary btn-sm">编辑岗位</a>
     </div>
     <div class="kanban" id="kanban-board">
-      ${pipeline.stages.map(stage => `
+      ${pipeline.stages.map(stage => {
+        const allCards = pipeline.pipeline[stage] || [];
+        const activeCards = allCards.filter(l => !l.outcome);
+        const inactiveCards = allCards.filter(l => l.outcome);
+        const inactiveCount = inactiveCards.length;
+        return `
         <div class="kanban-col" data-stage="${stage}">
           <div class="kanban-col-header">
             <span>${stage}</span>
-            <span class="kanban-count">${(pipeline.pipeline[stage] || []).length}</span>
+            <span class="kanban-count">${activeCards.length}</span>
           </div>
           <div class="kanban-cards">
-            ${(pipeline.pipeline[stage] || []).map(lnk => renderCard(lnk, pipeline.stages)).join("")}
+            ${activeCards.map(lnk => renderCard(lnk, pipeline.stages)).join("")}
           </div>
-        </div>`).join("")}
+          ${inactiveCount > 0 ? `
+          <div class="kanban-inactive-cards hidden" id="inactive-${stage.replace(/\s/g,'_')}">
+            ${inactiveCards.map(lnk => renderCard(lnk, pipeline.stages)).join("")}
+          </div>
+          <button class="kanban-toggle-inactive btn btn-secondary btn-sm" data-stage="${stage.replace(/\s/g,'_')}" style="margin:6px 8px;font-size:11px;width:calc(100% - 16px)">显示已淘汰 (${inactiveCount})</button>
+          ` : ""}
+        </div>`;
+      }).join("")}
     </div>`;
 
   el.querySelectorAll(".move-stage-select").forEach(sel => {
@@ -1518,6 +1582,16 @@ async function renderPipeline(el, jobId) {
     };
   });
 
+  // 折叠/展开已淘汰卡片
+  el.querySelectorAll(".kanban-toggle-inactive").forEach(btn => {
+    btn.onclick = () => {
+      const stage = btn.dataset.stage;
+      const group = document.getElementById(`inactive-${stage}`);
+      const isHidden = group.classList.toggle("hidden");
+      btn.textContent = isHidden ? `显示已淘汰 (${group.querySelectorAll(".kanban-card").length})` : "隐藏已淘汰";
+    };
+  });
+
   // drag-and-drop
   let dragLinkId = null;
   el.querySelectorAll(".kanban-card").forEach(card => {
@@ -1544,13 +1618,23 @@ async function renderPipeline(el, jobId) {
 }
 
 function renderCard(lnk, stages) {
-  const stageOptions = stages.map(s => `<option value="${s}" ${s === lnk.stage ? "selected" : ""}>${s}</option>`).join("");
+  const isInactive = !!lnk.outcome;
   const lastUpdate = lnk.days_since_update !== null ? (lnk.days_since_update === 0 ? "今天" : `${lnk.days_since_update}天前`) : "";
   const rejectionTag = lnk.rejection_reason ? `<span class="tag" style="background:#fee2e2;color:#dc2626;font-size:11px">${lnk.rejection_reason}</span>` : "";
+
+  if (isInactive) {
+    return `
+    <div class="kanban-card" data-link-id="${lnk.id}" data-stage="${lnk.stage}" style="opacity:0.5;background:#f9f9f9;cursor:default">
+      <div class="card-name"><a href="#/candidates/${lnk.candidate_id}" style="color:#888;text-decoration:none">${lnk.candidate_name}</a></div>
+      <div class="card-meta" style="margin-top:4px">${rejectionTag}${lnk.outcome==="withdrawn"?'<span class="tag" style="background:#f3f4f6;color:#6b7280;font-size:11px">已退出</span>':""}</div>
+    </div>`;
+  }
+
+  const stageOptions = stages.map(s => `<option value="${s}" ${s === lnk.stage ? "selected" : ""}>${s}</option>`).join("");
   return `
     <div class="kanban-card" draggable="true" data-link-id="${lnk.id}" data-stage="${lnk.stage}">
       <div class="card-name"><a href="#/candidates/${lnk.candidate_id}" style="color:inherit;text-decoration:none">${lnk.candidate_name}</a></div>
-      <div class="card-meta">${lastUpdate ? `🕐 ${lastUpdate}` : ""}${lnk.notes ? ` 📝 ${lnk.notes}` : ""}${rejectionTag}</div>
+      <div class="card-meta">${lastUpdate ? `🕐 ${lastUpdate}` : ""}${lnk.notes ? ` 📝 ${lnk.notes}` : ""}</div>
       <div class="card-actions">
         <select class="move-stage-select" data-link-id="${lnk.id}" style="flex:1;font-size:12px;padding:3px 6px;border:1px solid #ddd;border-radius:6px;background:#f9f9f9">${stageOptions}</select>
       </div>

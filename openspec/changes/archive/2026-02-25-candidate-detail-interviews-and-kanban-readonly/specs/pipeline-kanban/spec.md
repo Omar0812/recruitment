@@ -1,10 +1,7 @@
-## Purpose
-定义招聘看板的交互规范，包括卡片展示、面试记录入口、备注操作和阶段移动。
+## MODIFIED Requirements
 
-## Requirements
-
-### Requirement: 看板卡片区分 active/inactive 状态
-看板卡片 SHALL 区分 active（进行中）和 inactive（已淘汰/已退出）两种状态。active 卡片保持完整交互；inactive 卡片 SHALL 只读灰化，不渲染移阶段下拉、备注按钮、淘汰按钮，仅保留候选人姓名链接和淘汰原因 tag。
+### Requirement: 看板卡片展示面试记录入口
+看板卡片 SHALL 区分 active（进行中）和 inactive（已淘汰/已退出）两种状态。active 卡片保持现有完整交互；inactive 卡片 SHALL 只读灰化，不渲染移阶段下拉、备注按钮、淘汰按钮，仅保留候选人姓名链接和淘汰原因 tag。
 
 #### Scenario: active 卡片正常展示
 - **WHEN** 候选人在该岗位的 outcome 为空（进行中）
@@ -14,19 +11,12 @@
 - **WHEN** 候选人在该岗位的 outcome 为 rejected 或 withdrawn
 - **THEN** 看板卡片灰化显示，不渲染任何操作按钮，仅显示姓名链接和淘汰原因 tag
 
-### Requirement: 看板卡片展示面试记录入口
-看板 active 卡片 SHALL 提供展开操作，展开后显示面试记录列表和新增面试记录按钮。
-
-#### Scenario: 展开卡片查看面试记录
-- **WHEN** HR 点击看板卡片的展开按钮
-- **THEN** 系统在卡片下方显示面试记录列表（含轮次、面试官、评分、结论）和"+ 新增面试记录"按钮
-
 #### Scenario: 新增面试记录入口
 - **WHEN** HR 点击"+ 新增面试记录"
 - **THEN** 系统弹出面试记录填写表单
 
 ### Requirement: 看板列默认折叠已淘汰卡片
-看板每列 SHALL 默认隐藏 inactive 卡片，并在列底部显示"显示已淘汰 (N)"toggle 按钮。当该列无 inactive 卡片时不显示 toggle。
+看板每列 SHALL 默认隐藏 inactive 卡片，并在列底部显示"显示已淘汰 (N)"toggle 按钮（N 为该列 inactive 卡片数量）。当该列无 inactive 卡片时不显示 toggle。
 
 #### Scenario: 默认折叠已淘汰卡片
 - **WHEN** HR 进入看板页面
