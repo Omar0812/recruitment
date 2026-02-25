@@ -819,113 +819,133 @@ async function renderCandidateProfile(el, id) {
 async function renderPipelineTracking(el) {
   el.innerHTML = `
     <div class="page-header"><h1>流程跟进</h1></div>
-    <div class="filter-bar" style="margin-bottom:8px">
-      <input id="pt-search" type="text" placeholder="搜索候选人姓名..." style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none">
-    </div>
     <div class="filter-bar" style="margin-bottom:16px">
-      <select id="pt-job-filter" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
-        <option value="">全部岗位</option>
-      </select>
-      <select id="pt-stage-filter" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff">
-        <option value="">全部阶段</option>
-      </select>
+      <input id="pt-search" type="text" placeholder="搜索候选人姓名..." style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none">
+      <div style="display:flex;gap:4px;background:#f3f4f6;border-radius:8px;padding:3px">
+        <button id="pt-group-job" class="btn btn-primary btn-sm" style="border-radius:6px">按岗位</button>
+        <button id="pt-group-stage" class="btn btn-secondary btn-sm" style="border-radius:6px;background:transparent;border:none">按阶段</button>
+      </div>
     </div>
-    <div class="card" style="padding:0;overflow:hidden">
-      <div id="pt-content"><span class="spinner" style="margin:24px"></span></div>
-    </div>`;
+    <div id="pt-content"><span class="spinner" style="margin:24px"></span></div>`;
 
   const links = await api.get("/api/pipeline/active");
   const contentEl = document.getElementById("pt-content");
   if (!contentEl) return;
 
-  // 填充岗位/阶段下拉
-  const jobFilter = document.getElementById("pt-job-filter");
-  [...new Map(links.map(l => [l.job_id, l.job_title])).entries()].forEach(([id, title]) => {
-    const opt = document.createElement("option");
-    opt.value = id; opt.textContent = title;
-    jobFilter.appendChild(opt);
-  });
-  const stageFilter = document.getElementById("pt-stage-filter");
-  [...new Set(links.map(l => l.stage).filter(Boolean))].forEach(s => {
-    const opt = document.createElement("option");
-    opt.value = s; opt.textContent = s;
-    stageFilter.appendChild(opt);
-  });
+  let groupMode = "job"; // "job" | "stage"
+
+  const bindRejectBtn = (btn) => {
+    btn.onclick = () => {
+      const linkId = btn.dataset.linkId;
+      const rejectOverlay = document.getElementById("reject-overlay");
+      document.getElementById("reject-reason-select").value = "";
+      rejectOverlay.classList.remove("hidden");
+      document.getElementById("reject-cancel").onclick = () => rejectOverlay.classList.add("hidden");
+      const confirmBtn = document.getElementById("reject-confirm");
+      confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
+        const reason = document.getElementById("reject-reason-select").value;
+        rejectOverlay.classList.add("hidden");
+        await api.patch(`/api/pipeline/link/${linkId}/outcome`, { outcome: "rejected", rejection_reason: reason });
+        if (confirm("是否补填面试记录？")) {
+          const ivOverlay = document.getElementById("interview-overlay");
+          ivOverlay.classList.remove("hidden");
+          document.getElementById("iv-cancel").onclick = () => { ivOverlay.classList.add("hidden"); renderContent(); };
+          const ivBtn = document.getElementById("iv-confirm");
+          ivBtn.onclick = () => withLoading(ivBtn, async () => {
+            await api.post(`/api/interviews`, {
+              link_id: parseInt(linkId),
+              round: document.getElementById("iv-round").value,
+              interviewer: document.getElementById("iv-interviewer").value || null,
+              interview_time: document.getElementById("iv-time").value || null,
+              score: parseInt(document.getElementById("iv-score").value) || null,
+              comment: document.getElementById("iv-comment").value || null,
+              conclusion: "淘汰",
+            });
+            ivOverlay.classList.add("hidden");
+            renderContent();
+          });
+        } else {
+          renderContent();
+        }
+      });
+    };
+  };
+
+  function renderRow(l, showJob) {
+    const days = l.days_since_update !== null ? (l.days_since_update === 0 ? "今天" : `${l.days_since_update}天前`) : "-";
+    return `<tr data-link-id="${l.id}">
+      <td><a href="#/candidates/${l.candidate_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${l.candidate_name || "-"}</a></td>
+      ${showJob
+        ? `<td><span class="tag" style="font-size:11px">${l.stage || "-"}</span></td>`
+        : `<td style="color:#555;font-size:13px">${l.job_title || "-"}</td>`}
+      <td style="color:#888;font-size:13px">${days}</td>
+      <td><div style="display:flex;gap:4px">
+        <a href="#/jobs/pipeline/${l.job_id}" class="btn btn-secondary btn-sm">看板</a>
+        <button class="btn btn-danger btn-sm pt-reject-btn" data-link-id="${l.id}">淘汰</button>
+      </div></td>
+    </tr>`;
+  }
+
+  function renderGroups(groups, secondColLabel) {
+    if (!groups.length) {
+      contentEl.innerHTML = '<div class="empty-state" style="padding:32px">暂无进行中的人选</div>';
+      return;
+    }
+    contentEl.innerHTML = groups.map(({ label, items }) => `
+      <div class="card" style="margin-bottom:12px;padding:0;overflow:hidden">
+        <div style="padding:12px 16px;background:#f9fafb;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:8px">
+          <span style="font-weight:600;font-size:14px;color:#1a1a2e">${label}</span>
+          <span class="tag" style="font-size:11px">${items.length}人</span>
+        </div>
+        <table class="table" style="margin:0">
+          <thead><tr><th>候选人</th><th>${secondColLabel}</th><th>最后更新</th><th>操作</th></tr></thead>
+          <tbody>${items.map(l => renderRow(l, secondColLabel === "阶段")).join("")}</tbody>
+        </table>
+      </div>`).join("");
+    contentEl.querySelectorAll(".pt-reject-btn").forEach(bindRejectBtn);
+  }
 
   const renderContent = () => {
     const q = document.getElementById("pt-search")?.value.trim().toLowerCase() || "";
-    const jobId = document.getElementById("pt-job-filter")?.value || "";
-    const stage = document.getElementById("pt-stage-filter")?.value || "";
     let filtered = links;
     if (q) filtered = filtered.filter(l => (l.candidate_name || "").toLowerCase().includes(q));
-    if (jobId) filtered = filtered.filter(l => String(l.job_id) === jobId);
-    if (stage) filtered = filtered.filter(l => l.stage === stage);
 
-    if (!filtered.length) {
-      contentEl.innerHTML = '<div class="empty-state">暂无进行中的人选</div>';
-      return;
+    if (groupMode === "job") {
+      const jobMap = new Map();
+      filtered.forEach(l => {
+        if (!jobMap.has(l.job_id)) jobMap.set(l.job_id, { label: l.job_title || "未知岗位", items: [] });
+        jobMap.get(l.job_id).items.push(l);
+      });
+      renderGroups([...jobMap.values()], "阶段");
+    } else {
+      const stageMap = new Map();
+      filtered.forEach(l => {
+        const s = l.stage || "未知阶段";
+        if (!stageMap.has(s)) stageMap.set(s, { label: s, items: [] });
+        stageMap.get(s).items.push(l);
+      });
+      renderGroups([...stageMap.values()], "岗位");
     }
+  };
 
-    contentEl.innerHTML = `<table class="table">
-      <thead><tr><th>候选人</th><th>岗位</th><th>阶段</th><th>最后更新</th><th>操作</th></tr></thead>
-      <tbody>${filtered.map(l => {
-        const days = l.days_since_update !== null ? (l.days_since_update === 0 ? "今天" : `${l.days_since_update}天前`) : "-";
-        return `<tr data-link-id="${l.id}">
-          <td><a href="#/candidates/${l.candidate_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${l.candidate_name}</a></td>
-          <td style="color:#555;font-size:13px">${l.job_title}</td>
-          <td><span class="tag" style="font-size:11px">${l.stage || "-"}</span></td>
-          <td style="color:#888;font-size:13px">${days}</td>
-          <td><div style="display:flex;gap:4px">
-            <a href="#/jobs/pipeline/${l.job_id}" class="btn btn-secondary btn-sm">看板</a>
-            <button class="btn btn-danger btn-sm pt-reject-btn" data-link-id="${l.id}">淘汰</button>
-          </div></td>
-        </tr>`;
-      }).join("")}
-      </tbody></table>`;
+  document.getElementById("pt-search").oninput = renderContent;
 
-    contentEl.querySelectorAll(".pt-reject-btn").forEach(btn => {
-      btn.onclick = () => {
-        const linkId = btn.dataset.linkId;
-        const rejectOverlay = document.getElementById("reject-overlay");
-        document.getElementById("reject-reason-select").value = "";
-        rejectOverlay.classList.remove("hidden");
-        document.getElementById("reject-cancel").onclick = () => rejectOverlay.classList.add("hidden");
-        const ptRejectConfirmBtn = document.getElementById("reject-confirm");
-        ptRejectConfirmBtn.onclick = () => withLoading(ptRejectConfirmBtn, async () => {
-          const reason = document.getElementById("reject-reason-select").value;
-          rejectOverlay.classList.add("hidden");
-          await api.patch(`/api/pipeline/link/${linkId}/outcome`, { outcome: "rejected", rejection_reason: reason });
-          // 询问是否补填面评
-          if (confirm("是否补填面试记录？")) {
-            const ivOverlay = document.getElementById("interview-overlay");
-            ivOverlay.classList.remove("hidden");
-            document.getElementById("iv-cancel").onclick = () => { ivOverlay.classList.add("hidden"); renderContent(); };
-            const ptIvConfirmBtn = document.getElementById("iv-confirm");
-            ptIvConfirmBtn.onclick = () => withLoading(ptIvConfirmBtn, async () => {
-              await api.post(`/api/interviews`, {
-                link_id: parseInt(linkId),
-                round: document.getElementById("iv-round").value,
-                interviewer: document.getElementById("iv-interviewer").value || null,
-                interview_time: document.getElementById("iv-time").value || null,
-                score: parseInt(document.getElementById("iv-score").value) || null,
-                comment: document.getElementById("iv-comment").value || null,
-                conclusion: "淘汰",
-              });
-              ivOverlay.classList.add("hidden");
-              renderContent();
-            });
-          } else {
-            renderContent();
-          }
-        });
-      };
-    });
+  document.getElementById("pt-group-job").onclick = () => {
+    groupMode = "job";
+    document.getElementById("pt-group-job").className = "btn btn-primary btn-sm";
+    document.getElementById("pt-group-stage").className = "btn btn-secondary btn-sm";
+    document.getElementById("pt-group-stage").style.cssText = "border-radius:6px;background:transparent;border:none";
+    renderContent();
+  };
+  document.getElementById("pt-group-stage").onclick = () => {
+    groupMode = "stage";
+    document.getElementById("pt-group-stage").className = "btn btn-primary btn-sm";
+    document.getElementById("pt-group-job").className = "btn btn-secondary btn-sm";
+    document.getElementById("pt-group-job").style.cssText = "border-radius:6px;background:transparent;border:none";
+    renderContent();
   };
 
   renderContent();
-  document.getElementById("pt-search").oninput = renderContent;
-  document.getElementById("pt-job-filter").onchange = renderContent;
-  document.getElementById("pt-stage-filter").onchange = renderContent;
 }
 
 // ── Talent Pool ───────────────────────────────────────────────────────────────
@@ -1460,7 +1480,6 @@ async function renderPipeline(el, jobId) {
     <div class="page-header">
       <button class="btn btn-secondary btn-sm" onclick="history.back()">← 返回</button>
       <h1>${job.title}</h1>
-      <a href="#/jobs/edit/${jobId}" class="btn btn-secondary btn-sm">编辑岗位</a>
     </div>
     <div class="kanban" id="kanban-board">
       ${pipeline.stages.map(stage => {
