@@ -144,6 +144,7 @@ def get_active_pipeline(db: Session = Depends(get_db)):
             "candidate_name": lnk.candidate.name if lnk.candidate else None,
             "job_id": lnk.job_id,
             "job_title": lnk.job.title if lnk.job else None,
+            "job_stages": lnk.job.stages if lnk.job else [],
             "stage": lnk.stage,
             "days_since_update": (datetime.utcnow() - lnk.updated_at).days if lnk.updated_at else None,
             "notes": lnk.notes,
