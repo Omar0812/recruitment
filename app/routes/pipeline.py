@@ -5,7 +5,7 @@ from typing import Optional
 from datetime import datetime
 
 from app.database import get_db
-from app.models import CandidateJobLink, Job, Candidate, HistoryEntry, InterviewRecord
+from app.models import CandidateJobLink, Job, Candidate, HistoryEntry, ActivityRecord
 
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
 
@@ -71,15 +71,20 @@ def link_candidate(data: LinkCreate, db: Session = Depends(get_db)):
         current_job = existing.job.title if existing.job else f"岗位#{existing.job_id}"
         raise HTTPException(status_code=400, detail=f"该候选人已在「{current_job}」流程中，请先结束再投递新岗位")
 
-    stage = data.stage or (job.stages[0] if job.stages else "简历筛选")
-    lnk = CandidateJobLink(candidate_id=data.candidate_id, job_id=data.job_id, stage=stage)
+    lnk = CandidateJobLink(candidate_id=data.candidate_id, job_id=data.job_id, stage="简历筛选")
     db.add(lnk)
     db.flush()
+    db.add(ActivityRecord(
+        link_id=lnk.id,
+        type="resume_review",
+        stage="简历筛选",
+        status="pending",
+    ))
     db.add(HistoryEntry(
         candidate_id=data.candidate_id,
         job_id=data.job_id,
         event_type="stage_change",
-        detail=f"加入岗位「{job.title}」，阶段：{stage}",
+        detail=f"加入岗位「{job.title}」",
     ))
     db.commit()
     db.refresh(lnk)
@@ -88,21 +93,7 @@ def link_candidate(data: LinkCreate, db: Session = Depends(get_db)):
 
 @router.patch("/link/{link_id}/stage")
 def update_stage(link_id: int, data: StageUpdate, db: Session = Depends(get_db)):
-    lnk = db.query(CandidateJobLink).filter(CandidateJobLink.id == link_id).first()
-    if not lnk:
-        raise HTTPException(status_code=404, detail="关联不存在")
-    old_stage = lnk.stage
-    lnk.stage = data.stage
-    lnk.updated_at = datetime.utcnow()
-    db.add(HistoryEntry(
-        candidate_id=lnk.candidate_id,
-        job_id=lnk.job_id,
-        event_type="stage_change",
-        detail=f"阶段变更：{old_stage} → {data.stage}",
-    ))
-    db.commit()
-    db.refresh(lnk)
-    return link_to_dict(lnk)
+    raise HTTPException(status_code=410, detail="stage 手动更新已废弃，阶段由活动链自动派生")
 
 
 @router.patch("/link/{link_id}/outcome")
@@ -195,25 +186,27 @@ def transfer_job(link_id: int, data: TransferJob, db: Session = Depends(get_db))
     lnk.updated_at = datetime.utcnow()
 
     # Create new link
-    new_stage = new_job.stages[0] if new_job.stages else "简历筛选"
     new_lnk = CandidateJobLink(
         candidate_id=lnk.candidate_id,
         job_id=data.new_job_id,
-        stage=new_stage,
+        stage="简历筛选",
     )
     db.add(new_lnk)
     db.flush()
 
-    if data.keep_records:
-        db.query(InterviewRecord).filter(
-            InterviewRecord.link_id == link_id
-        ).update({"link_id": new_lnk.id})
+    db.add(ActivityRecord(
+        link_id=new_lnk.id,
+        type="resume_review",
+        stage="简历筛选",
+        status="completed",
+        conclusion="通过",
+    ))
 
     db.add(HistoryEntry(
         candidate_id=lnk.candidate_id,
         job_id=data.new_job_id,
         event_type="stage_change",
-        detail=f"转移至岗位「{new_job.title}」，阶段：{new_stage}",
+        detail=f"转移至岗位「{new_job.title}」",
     ))
     db.commit()
     db.refresh(new_lnk)

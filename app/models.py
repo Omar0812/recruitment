@@ -76,6 +76,7 @@ class CandidateJobLink(Base):
     candidate = relationship("Candidate", back_populates="job_links")
     job = relationship("Job", back_populates="candidate_links")
     interview_records = relationship("InterviewRecord", back_populates="link", cascade="all, delete-orphan")
+    activity_records = relationship("ActivityRecord", back_populates="link", cascade="all, delete-orphan")
 
 
 class HistoryEntry(Base):
@@ -109,3 +110,37 @@ class InterviewRecord(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     link = relationship("CandidateJobLink", back_populates="interview_records")
+
+
+class ActivityRecord(Base):
+    __tablename__ = "activity_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    link_id = Column(Integer, ForeignKey("candidate_job_links.id"), nullable=False)
+    type = Column(String, nullable=False)   # resume_review / interview / phone_screen / note / offer / stage_change(retired)
+    stage = Column(String, nullable=True)   # 创建时所在阶段；resume_review 自动填 "简历筛选"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # 公共字段
+    actor = Column(String, nullable=True)
+    comment = Column(Text, nullable=True)
+    conclusion = Column(String, nullable=True)   # 通过 / 待定 / 淘汰
+    rejection_reason = Column(String, nullable=True)
+
+    # interview 专有
+    round = Column(String, nullable=True)
+    interview_time = Column(String, nullable=True)
+    scheduled_at = Column(DateTime, nullable=True)
+    location = Column(String, nullable=True)
+    status = Column(String, nullable=True)   # scheduled / completed / cancelled
+    score = Column(Integer, nullable=True)
+
+    # offer 专有
+    salary = Column(String, nullable=True)
+    start_date = Column(String, nullable=True)
+
+    # stage_change 专有
+    from_stage = Column(String, nullable=True)
+    to_stage = Column(String, nullable=True)
+
+    link = relationship("CandidateJobLink", back_populates="activity_records")

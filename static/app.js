@@ -52,13 +52,14 @@ async function withLoading(btn, asyncFn) {
 }
 
 // ── Interview overlay (for kanban) ────────────────────────────────────────────
-function openInterviewOverlay(linkId, round, onSave) {
+function openInterviewOverlay(linkId, round, stage, onSave) {
   const overlay = document.getElementById("interview-overlay");
   // reset fields
   document.getElementById("iv-round").value = round || "";
   document.getElementById("iv-round-label").textContent = round || "";
   document.getElementById("iv-interviewer").value = "";
-  document.getElementById("iv-time").value = "";
+  document.getElementById("iv-time-date").value = "";
+  document.getElementById("iv-time-slot").value = "09:00";
   document.getElementById("iv-score").value = "";
   document.getElementById("iv-comment").value = "";
   document.getElementById("iv-conclusion").value = "";
@@ -82,15 +83,21 @@ function openInterviewOverlay(linkId, round, onSave) {
   confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
     const rejection_reason = document.getElementById("iv-rejection-reason")?.value || null;
     const conclusion = document.getElementById("iv-conclusion").value || null;
-    await api.post("/api/interviews", {
+    const dateVal = document.getElementById("iv-time-date").value;
+    const slotVal = document.getElementById("iv-time-slot").value;
+    const interview_time = dateVal ? `${dateVal}T${slotVal}:00` : null;
+    await api.post("/api/activities", {
       link_id: parseInt(linkId),
+      type: "interview",
+      stage: stage || "",
       round: document.getElementById("iv-round").value || null,
-      interviewer: document.getElementById("iv-interviewer").value || null,
-      interview_time: document.getElementById("iv-time").value || null,
+      actor: document.getElementById("iv-interviewer").value || null,
+      interview_time,
       score: parseInt(document.getElementById("iv-score").value) || null,
       comment: document.getElementById("iv-comment").value || null,
       conclusion,
       rejection_reason: rejection_reason || null,
+      status: "completed",
     });
     if (conclusion === "淘汰") {
       await api.patch(`/api/pipeline/link/${linkId}/outcome`, { outcome: "rejected", rejection_reason: rejection_reason || null });
@@ -103,6 +110,21 @@ function openInterviewOverlay(linkId, round, onSave) {
 
 // bind star + conclusion interactivity for the overlay (called once on DOMContentLoaded)
 function initInterviewOverlay() {
+  // populate time slot select
+  const slotSelect = document.getElementById("iv-time-slot");
+  if (slotSelect) {
+    for (let h = 8; h <= 22; h++) {
+      for (let m = 0; m < 60; m += 15) {
+        if (h === 22 && m > 0) break;
+        const hh = String(h).padStart(2, "0");
+        const mm = String(m).padStart(2, "0");
+        const opt = document.createElement("option");
+        opt.value = `${hh}:${mm}`;
+        opt.textContent = `${hh}:${mm}`;
+        slotSelect.appendChild(opt);
+      }
+    }
+  }
   // stars
   const stars = document.querySelectorAll("#iv-score-stars .iv-star");
   stars.forEach(star => {
@@ -823,15 +845,15 @@ async function renderCandidateProfile(el, id) {
 
     let records = pipelineTabCache[activeLink.id];
     if (!records) {
-      records = await api.get(`/api/interviews?link_id=${activeLink.id}`);
+      records = await api.get(`/api/activities?link_id=${activeLink.id}`);
       pipelineTabCache[activeLink.id] = records;
     }
 
-    const scored = records.filter(r => r.score);
+    const realActivities = records.filter(r => r.type !== "stage_change");
+    const scored = realActivities.filter(r => r.score);
     const avgScore = scored.length ? (scored.reduce((s,r)=>s+r.score,0)/scored.length).toFixed(1) : null;
 
-    const ivListHTML = [...records].sort((a,b)=>b.id-a.id).map(r => renderIvCardReadOnly(r)).join("")
-      || `<div style="color:#aaa;font-size:13px;margin-bottom:8px">暂无面评</div>`;
+    const timelineHTML = renderActivityTimeline(records, activeLink.stage, false);
 
     container.innerHTML = `
       <div class="card" style="margin-bottom:12px">
@@ -839,7 +861,7 @@ async function renderCandidateProfile(el, id) {
           <span style="font-size:13px;color:#555;font-weight:600">${activeLink.job_title||"未知岗位"}</span>
           <span class="tag" style="font-size:11px">${activeLink.stage||"-"}</span>
         </div>
-        <div id="tl-iv-list" style="margin-bottom:10px">${ivListHTML}</div>
+        <div id="tl-iv-list" style="margin-bottom:10px">${timelineHTML}</div>
         ${avgScore ? `<div style="margin-top:8px;padding-top:12px;border-top:1px solid #f0f0f0;font-size:13px;color:#555">综合评分均值：<strong>${avgScore}</strong> <span style="color:#f59e0b">${"★".repeat(Math.round(avgScore))}</span><span style="color:#ddd">${"★".repeat(5-Math.round(avgScore))}</span></div>` : ""}
         <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
           <a href="#/pipeline" style="font-size:13px;color:#4f46e5;text-decoration:none">→ 前往进行中页操作</a>
@@ -932,10 +954,11 @@ async function renderCandidateProfile(el, id) {
         if (open && !detail.dataset.loaded) {
           detail.dataset.loaded = "1";
           detail.innerHTML = '<span class="spinner"></span>';
-          const records = await api.get(`/api/interviews?link_id=${linkId}`);
-          if (!records.length) { detail.innerHTML = '<span style="color:#bbb;font-size:12px">暂无面评</span>'; return; }
-          detail.innerHTML = records.map(r => `<div style="font-size:12px;padding:4px 0;color:#555">
-            ${r.round||"面试"} ${r.score?"★".repeat(r.score):""} ${r.conclusion||""} ${r.comment?`· ${r.comment}`:""}
+          const records = await api.get(`/api/activities?link_id=${linkId}`);
+          const realRecs = records.filter(r => r.type !== "stage_change");
+          if (!realRecs.length) { detail.innerHTML = '<span style="color:#bbb;font-size:12px">暂无活动记录</span>'; return; }
+          detail.innerHTML = realRecs.map(r => `<div style="font-size:12px;padding:4px 0;color:#555">
+            ${r.round || (r.type === "phone_screen" ? "电话初筛" : r.type === "note" ? "备注" : r.type === "offer" ? "Offer" : "面试")} ${r.score?"★".repeat(r.score):""} ${r.conclusion||""} ${r.comment?`· ${r.comment}`:""}
           </div>`).join("");
         }
       };
@@ -974,6 +997,225 @@ async function renderCandidateProfile(el, id) {
   });
 }
 
+// ── Activity chain helpers ────────────────────────────────────────────────────
+const CHAIN_TYPES = new Set(["resume_review", "interview", "phone_screen", "offer"]);
+
+function getCurrentTailActivity(activities) {
+  const chain = activities.filter(a => CHAIN_TYPES.has(a.type));
+  return chain.length ? chain[chain.length - 1] : null;
+}
+
+function isTailComplete(tail) {
+  if (!tail) return true;
+  return tail.conclusion != null || tail.status === "completed" || tail.status === "cancelled";
+}
+
+// ── Activity card renderer ────────────────────────────────────────────────────
+function renderActivityCard(activity, editable) {
+  const a = activity;
+  const typeLabel = { resume_review: "简历筛选", interview: "面试", phone_screen: "电话初筛", note: "备注", offer: "Offer", stage_change: "阶段变更" };
+
+  if (a.type === "stage_change") {
+    return `<div class="activity-stage-change">→ 推进到 <strong>${a.to_stage || a.stage}</strong></div>`;
+  }
+
+  const conclusionColor = a.conclusion === "通过" ? "background:#dcfce7;color:#166534"
+    : a.conclusion === "淘汰" ? "background:#fee2e2;color:#dc2626"
+    : "background:#fef9c3;color:#854d0e";
+  const conclusionTag = a.conclusion ? `<span class="tag" style="font-size:11px;${conclusionColor}">${a.conclusion}</span>` : "";
+  const stars = a.score ? "★".repeat(a.score) + `<span style="color:#ddd">${"★".repeat(5 - a.score)}</span>` : "";
+
+  let statusTag = "";
+  if (a.type === "interview") {
+    if (a.status === "scheduled") statusTag = `<span class="tag iv-tag-scheduled" style="font-size:11px">待面试</span>`;
+    else if (a.status === "cancelled") statusTag = `<span class="tag iv-tag-cancelled" style="font-size:11px">已取消</span>`;
+  }
+
+  let metaParts = [];
+  if (a.actor) metaParts.push(a.actor);
+  if (a.type === "interview" && a.status === "scheduled" && a.scheduled_at) metaParts.push(formatTime(a.scheduled_at));
+  else if (a.type === "interview" && a.interview_time) metaParts.push(formatTime(a.interview_time));
+  if (a.location) metaParts.push(`📍 ${a.location}`);
+  if (a.type === "offer") {
+    if (a.salary) metaParts.push(`薪资：${a.salary}`);
+    if (a.start_date) metaParts.push(`入职：${a.start_date}`);
+  }
+  const meta = metaParts.join(" · ");
+
+  const editBtn = editable ? `<button class="btn btn-secondary btn-sm activity-edit-btn" data-id="${a.id}" style="float:right;margin-top:-2px">编辑</button>` : "";
+  const completeBtn = (editable && a.type === "interview" && a.status === "scheduled")
+    ? `<button class="btn btn-primary btn-sm activity-complete-btn" data-id="${a.id}" style="margin-right:4px">填写面评</button>` : "";
+  const cancelBtn = (editable && a.type === "interview" && a.status === "scheduled")
+    ? `<button class="btn btn-secondary btn-sm activity-cancel-btn" data-id="${a.id}">取消面试</button>` : "";
+
+  return `<div class="iv-card activity-card" data-activity-id="${a.id}" data-type="${a.type}">
+    ${editBtn}
+    <div class="iv-card-header">
+      <span class="iv-card-round">${typeLabel[a.type] || a.type}${a.round ? " · " + a.round : ""}</span>
+      ${stars ? `<span class="iv-card-score">${stars}</span>` : ""}
+      ${conclusionTag}
+      ${statusTag}
+    </div>
+    ${meta ? `<div class="iv-card-meta">${meta}</div>` : ""}
+    ${a.comment ? `<div class="iv-card-comment iv-comment-collapsible" data-expanded="false">${a.comment}</div>` : ""}
+    ${a.rejection_reason ? `<div style="font-size:12px;color:#dc2626;margin-top:4px">淘汰原因：${a.rejection_reason}</div>` : ""}
+    ${(completeBtn || cancelBtn) ? `<div style="display:flex;gap:6px;margin-top:8px">${completeBtn}${cancelBtn}</div>` : ""}
+  </div>`;
+}
+
+// ── Activity timeline renderer ────────────────────────────────────────────────
+function renderActivityTimeline(activities, currentStage, editable) {
+  if (!activities || !activities.length) {
+    if (editable) {
+      return `<div class="activity-stage-group">
+        <div class="activity-stage-label">${currentStage || "当前阶段"}</div>
+        <div style="color:#aaa;font-size:13px;padding:8px 0">暂无活动记录</div>
+      </div>`;
+    }
+    return `<div style="color:#aaa;font-size:13px;padding:8px 0">暂无活动记录</div>`;
+  }
+
+  // group by stage, preserving order of first appearance
+  const stageOrder = [];
+  const stageMap = {};
+  for (const a of activities) {
+    if (!stageMap[a.stage]) {
+      stageMap[a.stage] = [];
+      stageOrder.push(a.stage);
+    }
+    stageMap[a.stage].push(a);
+  }
+
+  let html = "";
+  for (const stage of stageOrder) {
+    const isCurrentStage = stage === currentStage;
+    const stageActivities = stageMap[stage];
+    // separate stage_change from real activities
+    const realActivities = stageActivities.filter(a => a.type !== "stage_change");
+    const stageChanges = stageActivities.filter(a => a.type === "stage_change");
+
+    // render stage_change transitions first (as dividers)
+    for (const sc of stageChanges) {
+      html += renderActivityCard(sc, false);
+    }
+
+    html += `<div class="activity-stage-group${isCurrentStage ? " current-stage" : ""}">
+      <div class="activity-stage-label">${stage}</div>`;
+
+    if (realActivities.length) {
+      html += realActivities.map(a => renderActivityCard(a, editable && isCurrentStage)).join("");
+    } else if (isCurrentStage) {
+      html += `<div style="color:#aaa;font-size:13px;padding:4px 0">暂无活动记录</div>`;
+    }
+
+    html += `</div>`;
+  }
+
+  // if currentStage not yet in activities, show empty group at end
+  if (currentStage && !stageMap[currentStage]) {
+    html += `<div class="activity-stage-group current-stage">
+      <div class="activity-stage-label">${currentStage}</div>
+      <div style="color:#aaa;font-size:13px;padding:4px 0">暂无活动记录</div>
+    </div>`;
+  }
+
+  return html;
+}
+
+// ── Activity type forms ───────────────────────────────────────────────────────
+function renderPhoneScreenFormHTML(record) {
+  const r = record || {};
+  const conclusionBtns = ["通过","待定","淘汰"].map(v =>
+    `<button type="button" class="iv-conclusion-btn${r.conclusion===v?" active":""}" data-v="${v}">${v}</button>`
+  ).join("");
+  return `
+    <div class="iv-form-row">
+      <div><label>沟通人</label><input class="ivf-actor" value="${r.actor||""}" placeholder="沟通人姓名"></div>
+    </div>
+    <label>评语/备注</label>
+    <textarea class="ivf-comment" style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-height:50px;box-sizing:border-box;margin-bottom:8px">${r.comment||""}</textarea>
+    <label>结论</label>
+    <div style="display:flex;gap:8px;margin:4px 0 10px">${conclusionBtns}</div>
+    <input class="ivf-conclusion" type="hidden" value="${r.conclusion||""}">
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn btn-secondary btn-sm ivf-cancel">取消</button>
+      <button type="button" class="btn btn-primary btn-sm ivf-save">保存</button>
+    </div>`;
+}
+
+function bindPhoneScreenFormInteractivity(container) {
+  container.querySelectorAll(".iv-conclusion-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      container.querySelectorAll(".iv-conclusion-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      container.querySelector(".ivf-conclusion").value = btn.dataset.v;
+    });
+  });
+}
+
+function getPhoneScreenFormData(container) {
+  return {
+    actor: container.querySelector(".ivf-actor")?.value || null,
+    comment: container.querySelector(".ivf-comment")?.value || null,
+    conclusion: container.querySelector(".ivf-conclusion")?.value || null,
+  };
+}
+
+function renderNoteFormHTML(record) {
+  const r = record || {};
+  return `
+    <label>备注内容</label>
+    <textarea class="ivf-comment" style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-height:60px;box-sizing:border-box;margin-bottom:8px" placeholder="填写备注...">${r.comment||""}</textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn btn-secondary btn-sm ivf-cancel">取消</button>
+      <button type="button" class="btn btn-primary btn-sm ivf-save">保存</button>
+    </div>`;
+}
+
+function getNoteFormData(container) {
+  return { comment: container.querySelector(".ivf-comment")?.value || null };
+}
+
+function renderOfferFormHTML(record) {
+  const r = record || {};
+  const conclusionBtns = ["接受","拒绝","谈判中"].map(v =>
+    `<button type="button" class="iv-conclusion-btn${r.conclusion===v?" active":""}" data-v="${v}">${v}</button>`
+  ).join("");
+  return `
+    <div class="iv-form-row">
+      <div><label>薪资（选填）</label><input class="ivf-salary" value="${r.salary||""}" placeholder="如：25k×14"></div>
+      <div><label>入职日期（选填）</label><input class="ivf-start-date" type="date" value="${r.start_date||""}"></div>
+    </div>
+    <label>备注</label>
+    <textarea class="ivf-comment" style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-height:50px;box-sizing:border-box;margin-bottom:8px">${r.comment||""}</textarea>
+    <label>结论</label>
+    <div style="display:flex;gap:8px;margin:4px 0 10px">${conclusionBtns}</div>
+    <input class="ivf-conclusion" type="hidden" value="${r.conclusion||""}">
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn btn-secondary btn-sm ivf-cancel">取消</button>
+      <button type="button" class="btn btn-primary btn-sm ivf-save">保存</button>
+    </div>`;
+}
+
+function bindOfferFormInteractivity(container) {
+  container.querySelectorAll(".iv-conclusion-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      container.querySelectorAll(".iv-conclusion-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      container.querySelector(".ivf-conclusion").value = btn.dataset.v;
+    });
+  });
+}
+
+function getOfferFormData(container) {
+  return {
+    salary: container.querySelector(".ivf-salary")?.value || null,
+    start_date: container.querySelector(".ivf-start-date")?.value || null,
+    comment: container.querySelector(".ivf-comment")?.value || null,
+    conclusion: container.querySelector(".ivf-conclusion")?.value || null,
+  };
+}
+
 // ── Pipeline Tracking ─────────────────────────────────────────────────────────
 
 // shared inline iv form renderer (new or edit)
@@ -988,18 +1230,44 @@ function renderIvFormHTML(record, round) {
     {v:"通过", label:"通过"},
     {v:"淘汰", label:"淘汰"},
   ].map(c => `<button type="button" class="iv-conclusion-btn${c.v==="淘汰"?" iv-conclusion-reject":""}${r.conclusion===c.v?" active":""}" data-v="${c.v}">${c.label}</button>`).join("");
-  const timeVal = r.interview_time ? r.interview_time.slice(0,16) : "";
+
+  // split interview_time into date + slot
+  let dateVal = "", slotVal = "09:00";
+  const timeStr = r.interview_time || (r.scheduled_at ? r.scheduled_at.slice(0,16) : "");
+  if (timeStr) {
+    dateVal = timeStr.slice(0, 10);
+    slotVal = timeStr.slice(11, 16) || "09:00";
+  }
+
+  const presetReasons = ["技术/专业能力不达标","综合素质不匹配","经验年限不足","薪资期望差距过大","候选人主动放弃","地点/出行不接受","背调未通过","入职前反悔"];
   const isRejected = r.conclusion === "淘汰";
-  const presetReasons = ["能力不匹配","薪资期望差距","候选人主动放弃"];
   const isCustomReason = r.rejection_reason && !presetReasons.includes(r.rejection_reason);
-  const rejectionReasonBtns = [...presetReasons, "其他"].map(v => {
-    const isActive = v === "其他" ? isCustomReason : r.rejection_reason === v;
-    return `<button type="button" class="ivf-reason-btn${isActive?" active":""}" data-v="${v}">${v}</button>`;
-  }).join("");
+  const rejectionReasonBtns = `
+    <div style="font-size:11px;color:#888;margin:2px 0">能力维度</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+      ${["技术/专业能力不达标","综合素质不匹配","经验年限不足"].map(v => {
+        const isActive = r.rejection_reason === v;
+        return `<button type="button" class="ivf-reason-btn${isActive?" active":""}" data-v="${v}">${v}</button>`;
+      }).join("")}
+    </div>
+    <div style="font-size:11px;color:#888;margin:2px 0">意愿维度</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+      ${["薪资期望差距过大","候选人主动放弃","地点/出行不接受"].map(v => {
+        const isActive = r.rejection_reason === v;
+        return `<button type="button" class="ivf-reason-btn${isActive?" active":""}" data-v="${v}">${v}</button>`;
+      }).join("")}
+    </div>
+    <div style="font-size:11px;color:#888;margin:2px 0">流程维度</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+      ${["背调未通过","入职前反悔","其他"].map(v => {
+        const isActive = v === "其他" ? isCustomReason : r.rejection_reason === v;
+        return `<button type="button" class="ivf-reason-btn${isActive?" active":""}" data-v="${v}">${v}</button>`;
+      }).join("")}
+    </div>`;
   return `
     <div class="iv-form-row">
-      <div><label>面试官</label><input class="ivf-interviewer" value="${r.interviewer||""}" placeholder="面试官姓名"></div>
-      <div><label>面试时间</label><input class="ivf-time" type="datetime-local" step="900" value="${timeVal}"></div>
+      <div><label>面试官</label><input class="ivf-actor" value="${r.actor||r.interviewer||""}" placeholder="面试官姓名"></div>
+      <div><label>面试时间</label>${renderTimeSlotHTML(dateVal, slotVal)}</div>
     </div>
     <label>评分</label>
     <div style="display:flex;gap:4px;margin:4px 0 8px">${stars}<span class="ivf-score-clear" style="font-size:12px;color:#bbb;cursor:pointer;align-self:center;margin-left:6px">清除</span></div>
@@ -1011,9 +1279,9 @@ function renderIvFormHTML(record, round) {
     <input class="ivf-conclusion" type="hidden" value="${r.conclusion||""}">
     <div class="ivf-rejection-reason-block" style="margin-bottom:10px;${isRejected?"":"display:none"}">
       <label>淘汰原因</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 6px">${rejectionReasonBtns}</div>
+      ${rejectionReasonBtns}
       <input class="ivf-rejection-reason" type="hidden" value="${r.rejection_reason||""}">
-      <input class="ivf-rejection-reason-other" type="text" placeholder="请填写原因" style="${r.rejection_reason && !["能力不匹配","薪资期望差距","候选人主动放弃"].includes(r.rejection_reason) ? "" : "display:none;"}padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box" value="${r.rejection_reason && !["能力不匹配","薪资期望差距","候选人主动放弃"].includes(r.rejection_reason) ? r.rejection_reason : ""}">
+      <input class="ivf-rejection-reason-other" type="text" placeholder="请填写原因" style="${isCustomReason ? "" : "display:none;"}padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box" value="${isCustomReason ? r.rejection_reason : ""}">
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button type="button" class="btn btn-secondary btn-sm ivf-cancel">取消</button>
@@ -1079,9 +1347,10 @@ function bindIvFormInteractivity(container) {
 }
 
 function getIvFormData(container) {
+  const interview_time = getTimeSlotValue(container, ".ivf-time-date", ".ivf-time-slot");
   return {
-    interviewer: container.querySelector(".ivf-interviewer").value || null,
-    interview_time: container.querySelector(".ivf-time").value || null,
+    actor: container.querySelector(".ivf-actor")?.value || null,
+    interview_time,
     score: parseInt(container.querySelector(".ivf-score").value) || null,
     comment: container.querySelector(".ivf-comment").value || null,
     conclusion: container.querySelector(".ivf-conclusion").value || null,
@@ -1141,12 +1410,40 @@ function renderIvCard(r) {
     </div>`;
 }
 
+// ── Time slot selector ────────────────────────────────────────────────────────
+function renderTimeSlotHTML(dateVal, timeVal) {
+  const slots = [];
+  for (let h = 8; h <= 22; h++) {
+    for (let m = 0; m < 60; m += 15) {
+      if (h === 22 && m > 0) break;
+      const hh = String(h).padStart(2, "0");
+      const mm = String(m).padStart(2, "0");
+      slots.push(`${hh}:${mm}`);
+    }
+  }
+  const defaultTime = timeVal || "09:00";
+  const options = slots.map(s => `<option value="${s}"${s === defaultTime ? " selected" : ""}>${s}</option>`).join("");
+  return `
+    <div style="display:flex;gap:8px;align-items:center">
+      <input class="ivf-time-date" type="date" value="${dateVal || ""}" style="flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <select class="ivf-time-slot" style="flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff">${options}</select>
+    </div>`;
+}
+
+function getTimeSlotValue(container, dateClass, slotClass) {
+  const date = container.querySelector(dateClass)?.value;
+  const slot = container.querySelector(slotClass)?.value;
+  if (!date) return null;
+  return `${date}T${slot || "09:00"}:00`;
+}
+
 // ── schedule form — module scope ───────────────────────────────────────────────
 function renderScheduleFormHTML(round) {
   const now = new Date();
   now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15, 0, 0);
   const pad = n => String(n).padStart(2, "0");
-  const defaultTime = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const defaultDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const defaultSlot = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
   return `
     <div class="iv-edit-form iv-schedule-form">
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
@@ -1162,7 +1459,7 @@ function renderScheduleFormHTML(round) {
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
         <div style="flex:2;min-width:180px">
           <label style="font-size:12px;color:#666;display:block;margin-bottom:4px">预约时间</label>
-          <input class="ivf-scheduled-at" type="datetime-local" value="${defaultTime}" step="900" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          ${renderTimeSlotHTML(defaultDate, defaultSlot)}
         </div>
         <div style="flex:2;min-width:160px">
           <label style="font-size:12px;color:#666;display:block;margin-bottom:4px">地点/会议链接（可选）</label>
@@ -1182,17 +1479,49 @@ function nextInterviewRound(records) {
   return `面试${count + 1}`;
 }
 
+// ── Reject overlay ────────────────────────────────────────────────────────────
+function openRejectOverlay(linkId, candidateName, jobTitle, onSuccess) {
+  const overlay = document.getElementById("reject-overlay");
+  overlay.classList.remove("hidden");
+  document.getElementById("reject-reason-select").value = "";
+  document.getElementById("reject-cancel").onclick = () => overlay.classList.add("hidden");
+  const confirmBtn = document.getElementById("reject-confirm");
+  confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
+    const reason = document.getElementById("reject-reason-select").value;
+    if (!reason) { showToast("请选择淘汰原因", "error"); return; }
+    await api.patch(`/api/pipeline/link/${linkId}/outcome`, { outcome: "rejected", rejection_reason: reason });
+    overlay.classList.add("hidden");
+    showToast("已标记淘汰", "success");
+    if (onSuccess) onSuccess();
+  });
+}
+
 // ── Withdraw overlay ──────────────────────────────────────────────────────────
 function openWithdrawOverlay(linkId, candidateName, jobTitle, onSuccess) {
   const overlay = document.getElementById("withdraw-overlay");
   document.getElementById("withdraw-info").textContent = `${candidateName} · ${jobTitle}`;
-  document.getElementById("withdraw-reason").value = "";
+  document.getElementById("withdraw-reason-value").value = "";
+  document.getElementById("withdraw-reason-note").value = "";
+  document.querySelectorAll("#withdraw-reason-btns .iv-reason-btn").forEach(b => b.classList.remove("active"));
   overlay.classList.remove("hidden");
+
+  // bind reason buttons
+  document.querySelectorAll("#withdraw-reason-btns .iv-reason-btn").forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll("#withdraw-reason-btns .iv-reason-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("withdraw-reason-value").value = btn.dataset.v;
+    };
+  });
+
   document.getElementById("withdraw-cancel").onclick = () => overlay.classList.add("hidden");
   const confirmBtn = document.getElementById("withdraw-confirm");
   confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
-    const reason = document.getElementById("withdraw-reason").value.trim();
-    await api.patch(`/api/pipeline/link/${linkId}/withdraw`, { reason: reason || undefined });
+    const reason = document.getElementById("withdraw-reason-value").value;
+    if (!reason) { showToast("请选择退出原因", "error"); return; }
+    const note = document.getElementById("withdraw-reason-note").value.trim();
+    const fullReason = note ? `${reason}：${note}` : reason;
+    await api.patch(`/api/pipeline/link/${linkId}/withdraw`, { reason: fullReason });
     overlay.classList.add("hidden");
     showToast("已标记候选人退出", "success");
     if (onSuccess) onSuccess();
@@ -1234,29 +1563,25 @@ async function renderPipelineTracking(el) {
   let groupMode = "job";
 
   // ── progress dots ──────────────────────────────────────────────────────────
-  function renderProgressDots(stages, currentStage, records) {
-    const recs = records || [];
+  function renderProgressDots(stages, currentStage, activities) {
+    const recs = (activities || []).filter(a => a.type !== "stage_change" && a.type !== "note");
     let html = '<div class="pt-progress">';
-    // one dot per actual interview record + trailing empty dot
     const allDots = [...recs.sort((a,b) => a.id - b.id)];
     allDots.forEach((r, i) => {
       if (i > 0) html += `<div class="pt-dot-line done"></div>`;
       let dotClass = "pt-dot";
       let symbol = "";
-      let title = r.round || "面试";
+      const typeLabel = { resume_review: "简历筛选", interview: "面试", phone_screen: "电话初筛", offer: "Offer" };
+      let title = r.round || typeLabel[r.type] || r.type;
       if (r.status === "cancelled") {
-        dotClass += " cancelled";
-        symbol = "✗";
-        title += " (已取消)";
+        dotClass += " cancelled"; symbol = "✗"; title += " (已取消)";
       } else {
-        dotClass += " done";
-        symbol = "●";
+        dotClass += " done"; symbol = "●";
         if (r.status === "scheduled") title += " (已安排)";
         else if (r.conclusion) title += ` (${r.conclusion})`;
       }
       html += `<div class="${dotClass}" title="${title}">${symbol}</div>`;
     });
-    // trailing empty dot
     if (allDots.length > 0) html += `<div class="pt-dot-line"></div>`;
     html += `<div class="pt-dot" title="待安排">○</div>`;
     html += `<span class="pt-stage-label">${currentStage || "-"}</span></div>`;
@@ -1265,9 +1590,8 @@ async function renderPipelineTracking(el) {
 
   // ── expand row ─────────────────────────────────────────────────────────────
   async function expandRow(tr, l) {
-    // load records
     if (!ivCache[l.id]) {
-      ivCache[l.id] = await api.get(`/api/interviews?link_id=${l.id}`);
+      ivCache[l.id] = await api.get(`/api/activities?link_id=${l.id}`);
     }
     const records = ivCache[l.id];
     const stages = l.job_stages || [];
@@ -1283,175 +1607,345 @@ async function renderPipelineTracking(el) {
     renderExpandInner(inner, l, records, stages);
   }
 
-  function renderExpandInner(inner, l, records, stages) {
-    // sort newest first
-    const sorted = [...records].sort((a, b) => b.id - a.id);
-    const roundLabel = nextInterviewRound(records);
+  function renderExpandInner(inner, l, activities, stages) {
+    const chainActs = activities.filter(a => CHAIN_TYPES.has(a.type));
+    const notes = activities.filter(a => a.type === "note");
+    const tail = getCurrentTailActivity(activities);
+    const tailComplete = isTailComplete(tail);
 
-    // iv cards
-    const cardsHTML = sorted.length
-      ? sorted.map(r => renderIvCard(r)).join("")
-      : `<div style="color:#aaa;font-size:13px;margin-bottom:8px">暂无面评</div>`;
+    // history = all chain activities except tail
+    const history = tail ? chainActs.slice(0, -1) : [];
 
-    // stage dropdown (all stages + 已入职)
-    const stageOptions = stages.filter(s => s !== "已入职").map(s =>
-      `<option value="${s}"${s === l.stage ? " selected" : ""}>${s}</option>`
-    ).join("");
+    // render history cards (read-only)
+    let historyHTML = "";
+    if (history.length) {
+      historyHTML = history.map(a => renderActivityCard(a, false)).join("");
+    }
+
+    // render notes (always read-only, shown after history)
+    const notesHTML = notes.map(a => renderActivityCard(a, true)).join("");
 
     inner.innerHTML = `
-      <div style="margin-bottom:10px" id="pt-iv-list-${l.id}">${cardsHTML}</div>
-      <button class="btn btn-secondary btn-sm pt-add-iv-btn" style="margin-bottom:12px">+ 安排${roundLabel}</button>
-      <div id="pt-new-iv-form-${l.id}" style="display:none"></div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px">
-        <label style="font-size:13px;color:#555">阶段：</label>
-        <select class="pt-stage-select" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;background:#fff">
-          ${stageOptions}
-          <option value="__hire__">已入职</option>
-        </select>
+      <div id="pt-history-${l.id}">${historyHTML}</div>
+      <div id="pt-tail-${l.id}"></div>
+      <div id="pt-next-${l.id}" style="margin-top:8px"></div>
+      <div id="pt-notes-${l.id}" style="margin-top:4px">${notesHTML}</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+        <button class="btn btn-secondary btn-sm pt-note-btn">+ 备注</button>
         <button type="button" class="btn btn-secondary btn-sm pt-transfer-btn">转移岗位</button>
         <button type="button" class="btn btn-secondary btn-sm pt-withdraw-btn" style="color:#dc2626;border-color:#fca5a5">候选人退出</button>
       </div>`;
 
-    // bind collapsible comments
-    inner.querySelectorAll(".iv-comment-collapsible").forEach(el => {
-      if (el.scrollHeight > el.clientHeight + 5 || el.textContent.length > 80) {
-        el.style.cssText += ";max-height:3.6em;overflow:hidden;cursor:pointer";
-        el.title = "点击展开";
-        el.onclick = () => {
-          const expanded = el.dataset.expanded === "true";
-          el.style.maxHeight = expanded ? "3.6em" : "none";
-          el.dataset.expanded = expanded ? "false" : "true";
-          el.title = expanded ? "点击展开" : "点击收起";
-        };
-      }
-    });
+    const tailDiv = inner.querySelector(`#pt-tail-${l.id}`);
+    const nextDiv = inner.querySelector(`#pt-next-${l.id}`);
 
-    // bind edit buttons on completed cards
-    inner.querySelectorAll(".iv-edit-btn").forEach(btn => {
-      btn.onclick = () => {
-        const recordId = parseInt(btn.dataset.recordId);
-        const record = records.find(r => r.id === recordId);
-        const card = inner.querySelector(`.iv-card[data-record-id="${recordId}"]`);
-        const formDiv = document.createElement("div");
-        formDiv.className = "iv-edit-form";
-        formDiv.innerHTML = renderIvFormHTML(record, record.round);
-        bindIvFormInteractivity(formDiv);
-        card.replaceWith(formDiv);
-        formDiv.querySelector(".ivf-cancel").onclick = () => formDiv.replaceWith(card);
-        const saveBtn = formDiv.querySelector(".ivf-save");
-        saveBtn.onclick = () => withLoading(saveBtn, async () => {
-          const data = getIvFormData(formDiv);
-          await api.patch(`/api/interviews/${recordId}`, data);
-          // if rejected, update link outcome
-          if (data.conclusion === "淘汰") {
-            await api.patch(`/api/pipeline/link/${l.id}/outcome`, { outcome: "rejected", rejection_reason: data.rejection_reason || null });
-          }
-          delete ivCache[l.id];
-          ivCache[l.id] = await api.get(`/api/interviews?link_id=${l.id}`);
-          showToast("面评已保存", "success");
-          if (data.conclusion === "淘汰") { renderContent(); return; }
-          renderExpandInner(inner, l, ivCache[l.id], stages);
-        });
-      };
-    });
+    async function refreshActivities() {
+      delete ivCache[l.id];
+      ivCache[l.id] = await api.get(`/api/activities?link_id=${l.id}`);
+      // update l.stage from server
+      const active = links.find(lk => lk.id === l.id);
+      const fresh = await api.get(`/api/pipeline/active`);
+      const freshLink = fresh.find(lk => lk.id === l.id);
+      if (freshLink && active) active.stage = freshLink.stage;
+      if (freshLink) l.stage = freshLink.stage;
+      renderExpandInner(inner, l, ivCache[l.id], stages);
+    }
 
-    // bind "填写面评" on scheduled cards
-    inner.querySelectorAll(".iv-complete-btn").forEach(btn => {
-      btn.onclick = () => {
-        const recordId = parseInt(btn.dataset.recordId);
-        const record = records.find(r => r.id === recordId);
-        const card = inner.querySelector(`.iv-card[data-record-id="${recordId}"]`);
-        const formDiv = document.createElement("div");
-        formDiv.className = "iv-edit-form";
-        formDiv.innerHTML = renderIvFormHTML({...record, status: "completed"}, record.round);
-        bindIvFormInteractivity(formDiv);
-        card.replaceWith(formDiv);
-        formDiv.querySelector(".ivf-cancel").onclick = () => formDiv.replaceWith(card);
-        const saveBtn = formDiv.querySelector(".ivf-save");
-        saveBtn.onclick = () => withLoading(saveBtn, async () => {
-          const data = { ...getIvFormData(formDiv), status: "completed" };
-          await api.patch(`/api/interviews/${recordId}`, data);
-          if (data.conclusion === "淘汰") {
-            await api.patch(`/api/pipeline/link/${l.id}/outcome`, { outcome: "rejected", rejection_reason: data.rejection_reason || null });
-          }
-          delete ivCache[l.id];
-          ivCache[l.id] = await api.get(`/api/interviews?link_id=${l.id}`);
-          showToast("面评已保存", "success");
-          if (data.conclusion === "淘汰") { renderContent(); return; }
-          renderExpandInner(inner, l, ivCache[l.id], stages);
-        });
-      };
-    });
-
-    // bind "取消面试" on scheduled cards
-    inner.querySelectorAll(".iv-cancel-btn").forEach(btn => {
-      btn.onclick = async () => {
-        const recordId = parseInt(btn.dataset.recordId);
-        await api.patch(`/api/interviews/${recordId}`, { status: "cancelled" });
-        delete ivCache[l.id];
-        ivCache[l.id] = await api.get(`/api/interviews?link_id=${l.id}`);
-        showToast("面试已取消", "success");
-        renderExpandInner(inner, l, ivCache[l.id], stages);
-      };
-    });
-
-    // schedule form
-    const addBtn = inner.querySelector(".pt-add-iv-btn");
-    const newFormDiv = inner.querySelector(`#pt-new-iv-form-${l.id}`);
-    addBtn.onclick = () => {
-      if (newFormDiv.style.display !== "none") return;
-      const autoRound = nextInterviewRound(ivCache[l.id] || []);
-      newFormDiv.innerHTML = renderScheduleFormHTML(autoRound);
-      newFormDiv.style.display = "block";
-      addBtn.style.display = "none";
-      newFormDiv.querySelector(".ivf-cancel").onclick = () => {
-        newFormDiv.style.display = "none";
-        addBtn.style.display = "";
-      };
-      const saveBtn = newFormDiv.querySelector(".ivf-schedule-save");
-      saveBtn.onclick = () => withLoading(saveBtn, async () => {
-        const interviewer = newFormDiv.querySelector(".ivf-interviewer").value.trim();
-        if (!interviewer) { showToast("请填写面试官", "error"); return; }
-        const round = autoRound;
-        const scheduledAt = newFormDiv.querySelector(".ivf-scheduled-at").value;
-        const location = newFormDiv.querySelector(".ivf-location").value.trim();
-        await api.post("/api/interviews", {
-          link_id: l.id,
-          round,
-          interviewer,
-          scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
-          location: location || null,
-          status: "scheduled",
-        });
-        delete ivCache[l.id];
-        ivCache[l.id] = await api.get(`/api/interviews?link_id=${l.id}`);
-        showToast("面试已安排", "success");
-        newFormDiv.style.display = "none";
-        addBtn.style.display = "";
-        renderExpandInner(inner, l, ivCache[l.id], stages);
-      });
-    };
-
-    // stage select
-    const stageSelect = inner.querySelector(".pt-stage-select");
-    stageSelect.onchange = async () => {
-      const val = stageSelect.value;
-      if (val === "__hire__") {
-        stageSelect.value = l.stage; // reset visual
-        openHireOverlay(l.id, l.candidate_name, l.job_title, () => {
-          const idx = links.findIndex(lk => lk.id === l.id);
-          if (idx !== -1) links.splice(idx, 1);
-          renderContent();
-        });
+    // ── render tail node ──────────────────────────────────────────────────────
+    function renderTail() {
+      if (!tail) {
+        tailDiv.innerHTML = `<div style="color:#aaa;font-size:13px;padding:4px 0">暂无活动记录</div>`;
         return;
       }
-      if (val === l.stage) return;
-      await api.patch(`/api/pipeline/link/${l.id}/stage`, { stage: val });
-      l.stage = val;
-      const link = links.find(lk => lk.id === l.id);
-      if (link) link.stage = val;
-      showToast(`已切换到 ${val}`, "success");
-      renderContent();
+
+      if (tail.type === "resume_review" && !tailComplete) {
+        // pending resume_review: show pass/reject buttons
+        tailDiv.innerHTML = `
+          <div class="iv-card activity-card" data-activity-id="${tail.id}">
+            <div class="iv-card-header"><span class="iv-card-round">简历筛选</span></div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="btn btn-primary btn-sm rr-pass-btn">通过</button>
+              <button class="btn btn-secondary btn-sm rr-reject-btn" style="color:#dc2626;border-color:#fca5a5">淘汰</button>
+            </div>
+          </div>`;
+        tailDiv.querySelector(".rr-pass-btn").onclick = async () => {
+          await api.patch(`/api/activities/${tail.id}`, { conclusion: "通过", status: "completed" });
+          await refreshActivities();
+        };
+        tailDiv.querySelector(".rr-reject-btn").onclick = () => {
+          openRejectOverlay(l.id, l.candidate_name, l.job_title, async () => {
+            await refreshActivities(); renderContent();
+          });
+        };
+        return;
+      }
+
+      if (tail.type === "interview" && tail.status === "scheduled") {
+        // scheduled interview: show complete/cancel buttons
+        tailDiv.innerHTML = renderActivityCard(tail, false);
+        const actionDiv = document.createElement("div");
+        actionDiv.style.cssText = "display:flex;gap:6px;margin-top:8px";
+        actionDiv.innerHTML = `
+          <button class="btn btn-primary btn-sm iv-complete-btn">填写面评</button>
+          <button class="btn btn-secondary btn-sm iv-cancel-btn">取消面试</button>`;
+        tailDiv.querySelector(".activity-card").appendChild(actionDiv);
+
+        actionDiv.querySelector(".iv-complete-btn").onclick = () => {
+          const formDiv = document.createElement("div");
+          formDiv.className = "iv-edit-form";
+          formDiv.innerHTML = renderIvFormHTML({...tail, status: "completed"}, tail.round);
+          bindIvFormInteractivity(formDiv);
+          tailDiv.innerHTML = "";
+          tailDiv.appendChild(formDiv);
+          formDiv.querySelector(".ivf-cancel").onclick = () => renderExpandInner(inner, l, activities, stages);
+          formDiv.querySelector(".ivf-save").onclick = async () => {
+            const data = { ...getIvFormData(formDiv), status: "completed" };
+            if (!data.conclusion) { showToast("请选择结论", "error"); return; }
+            await api.patch(`/api/activities/${tail.id}`, data);
+            if (data.conclusion === "淘汰") {
+              await api.patch(`/api/pipeline/link/${l.id}/outcome`, { outcome: "rejected", rejection_reason: data.rejection_reason || null });
+              await refreshActivities(); renderContent(); return;
+            }
+            await refreshActivities();
+          };
+        };
+        actionDiv.querySelector(".iv-cancel-btn").onclick = async () => {
+          await api.patch(`/api/activities/${tail.id}`, { status: "cancelled" });
+          await refreshActivities();
+        };
+        return;
+      }
+
+      if ((tail.type === "phone_screen" || tail.type === "offer") && !tailComplete) {
+        // incomplete phone_screen or offer: show edit form inline
+        let formHTML, getFormData, bindFn;
+        if (tail.type === "phone_screen") {
+          formHTML = renderPhoneScreenFormHTML(tail);
+          getFormData = getPhoneScreenFormData;
+          bindFn = bindPhoneScreenFormInteractivity;
+        } else {
+          formHTML = renderOfferFormHTML(tail);
+          getFormData = getOfferFormData;
+          bindFn = bindOfferFormInteractivity;
+        }
+        tailDiv.innerHTML = formHTML;
+        bindFn(tailDiv);
+        tailDiv.querySelector(".ivf-save").onclick = async () => {
+          const data = getFormData(tailDiv);
+          if (!data.conclusion) { showToast("请选择结论", "error"); return; }
+          await api.patch(`/api/activities/${tail.id}`, data);
+          if (tail.type === "phone_screen" && data.conclusion === "淘汰") {
+            await api.patch(`/api/pipeline/link/${l.id}/outcome`, { outcome: "rejected", rejection_reason: data.rejection_reason || null });
+            await refreshActivities(); renderContent(); return;
+          }
+          if (tail.type === "offer" && data.conclusion === "接受") {
+            openHireOverlay(l.id, l.candidate_name, l.job_title, () => {
+              const idx = links.findIndex(lk => lk.id === l.id);
+              if (idx !== -1) links.splice(idx, 1);
+              renderContent();
+            });
+            return;
+          }
+          await refreshActivities();
+        };
+        tailDiv.querySelector(".ivf-cancel").onclick = () => renderExpandInner(inner, l, activities, stages);
+        return;
+      }
+
+      // completed tail: show read-only card with edit button
+      tailDiv.innerHTML = renderActivityCard(tail, true);
+      tailDiv.querySelectorAll(".activity-edit-btn").forEach(btn => {
+        btn.onclick = () => {
+          const formDiv = document.createElement("div");
+          formDiv.className = "iv-edit-form";
+          if (tail.type === "interview") {
+            formDiv.innerHTML = renderIvFormHTML(tail, tail.round);
+            bindIvFormInteractivity(formDiv);
+            formDiv.querySelector(".ivf-save").onclick = async () => {
+              const data = getIvFormData(formDiv);
+              if (!data.conclusion) { showToast("请选择结论", "error"); return; }
+              await api.patch(`/api/activities/${tail.id}`, { ...data, status: "completed" });
+              await refreshActivities();
+            };
+          } else if (tail.type === "phone_screen") {
+            formDiv.innerHTML = renderPhoneScreenFormHTML(tail);
+            bindPhoneScreenFormInteractivity(formDiv);
+            formDiv.querySelector(".ivf-save").onclick = async () => {
+              const data = getPhoneScreenFormData(formDiv);
+              if (!data.conclusion) { showToast("请选择结论", "error"); return; }
+              await api.patch(`/api/activities/${tail.id}`, data);
+              await refreshActivities();
+            };
+          } else if (tail.type === "offer") {
+            formDiv.innerHTML = renderOfferFormHTML(tail);
+            bindOfferFormInteractivity(formDiv);
+            formDiv.querySelector(".ivf-save").onclick = async () => {
+              const data = getOfferFormData(formDiv);
+              if (!data.conclusion) { showToast("请选择结论", "error"); return; }
+              await api.patch(`/api/activities/${tail.id}`, data);
+              await refreshActivities();
+            };
+          } else if (tail.type === "note") {
+            formDiv.innerHTML = renderNoteFormHTML(tail);
+            formDiv.querySelector(".ivf-save").onclick = async () => {
+              await api.patch(`/api/activities/${tail.id}`, getNoteFormData(formDiv));
+              await refreshActivities();
+            };
+          }
+          formDiv.querySelector(".ivf-cancel").onclick = () => renderExpandInner(inner, l, activities, stages);
+          tailDiv.innerHTML = "";
+          tailDiv.appendChild(formDiv);
+        };
+      });
+    }
+
+    // ── render next step selector ─────────────────────────────────────────────
+    function renderNextStep() {
+      if (!tailComplete || !tail) return;
+
+      // Offer已接受但未入职：显示"确认入职"按钮
+      if (tail.type === "offer" && tail.conclusion === "接受") {
+        nextDiv.innerHTML = `
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px">
+            <div style="font-size:13px;color:#166534;margin-bottom:8px">Offer 已接受，请确认入职：</div>
+            <button class="btn btn-primary btn-sm" id="pt-confirm-hire-${l.id}">确认入职</button>
+          </div>`;
+        nextDiv.querySelector(`#pt-confirm-hire-${l.id}`).onclick = () => {
+          openHireOverlay(l.id, l.candidate_name, l.job_title, () => {
+            const idx = links.findIndex(lk => lk.id === l.id);
+            if (idx !== -1) links.splice(idx, 1);
+            renderContent();
+          });
+        };
+        return;
+      }
+
+      if (tail.conclusion !== "通过" && tail.conclusion !== "接受") return;
+
+      let options = [];
+      if (tail.type === "resume_review" || tail.type === "phone_screen") {
+        options = [
+          { type: "phone_screen", label: "电话初筛" },
+          { type: "interview", label: "面试" },
+          { type: "offer", label: "直接Offer" },
+        ];
+        if (tail.type === "phone_screen") options = options.filter(o => o.type !== "phone_screen");
+      } else if (tail.type === "interview") {
+        options = [
+          { type: "interview", label: "下一轮面试" },
+          { type: "offer", label: "Offer" },
+        ];
+      }
+
+      if (!options.length) return;
+
+      nextDiv.innerHTML = `
+        <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px">
+          <div style="font-size:13px;color:#1e40af;margin-bottom:8px">选择下一步：</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap" id="pt-next-btns-${l.id}"></div>
+          <div id="pt-next-form-${l.id}" style="margin-top:8px"></div>
+        </div>`;
+
+      const btnsDiv = nextDiv.querySelector(`#pt-next-btns-${l.id}`);
+      const formDiv = nextDiv.querySelector(`#pt-next-form-${l.id}`);
+
+      options.forEach(opt => {
+        const btn = document.createElement("button");
+        btn.className = "btn btn-secondary btn-sm";
+        btn.textContent = opt.label;
+        btn.onclick = () => showNextForm(opt.type, formDiv);
+        btnsDiv.appendChild(btn);
+      });
+    }
+
+    function showNextForm(type, formDiv) {
+      const stage = l.stage;
+      if (type === "interview") {
+        const autoRound = nextInterviewRound(activities.filter(a => a.type === "interview"));
+        formDiv.innerHTML = renderScheduleFormHTML(autoRound);
+        const saveBtn = formDiv.querySelector(".ivf-schedule-save");
+        saveBtn.onclick = () => withLoading(saveBtn, async () => {
+          const interviewer = formDiv.querySelector(".ivf-interviewer").value.trim();
+          if (!interviewer) { showToast("请填写面试官", "error"); return; }
+          const scheduledAt = getTimeSlotValue(formDiv, ".ivf-time-date", ".ivf-time-slot");
+          const location = formDiv.querySelector(".ivf-location").value.trim();
+          await api.post("/api/activities", {
+            link_id: l.id, type: "interview",
+            round: autoRound, actor: interviewer,
+            scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+            location: location || null, status: "scheduled",
+          });
+          showToast("面试已安排", "success");
+          await refreshActivities();
+        });
+        formDiv.querySelector(".ivf-cancel").onclick = () => { formDiv.innerHTML = ""; };
+      } else if (type === "phone_screen") {
+        formDiv.innerHTML = renderPhoneScreenFormHTML();
+        bindPhoneScreenFormInteractivity(formDiv);
+        formDiv.querySelector(".ivf-save").onclick = async () => {
+          const psData = getPhoneScreenFormData(formDiv);
+          if (!psData.conclusion) { showToast("请选择结论", "error"); return; }
+          await api.post("/api/activities", { link_id: l.id, type: "phone_screen", ...psData });
+          showToast("电话初筛已保存", "success");
+          await refreshActivities();
+        };
+        formDiv.querySelector(".ivf-cancel").onclick = () => { formDiv.innerHTML = ""; };
+      } else if (type === "offer") {
+        formDiv.innerHTML = renderOfferFormHTML();
+        bindOfferFormInteractivity(formDiv);
+        formDiv.querySelector(".ivf-save").onclick = async () => {
+          const data = getOfferFormData(formDiv);
+          if (!data.conclusion) { showToast("请选择结论", "error"); return; }
+          await api.post("/api/activities", { link_id: l.id, type: "offer", ...data });
+          if (data.conclusion === "接受") {
+            openHireOverlay(l.id, l.candidate_name, l.job_title, () => {
+              const idx = links.findIndex(lk => lk.id === l.id);
+              if (idx !== -1) links.splice(idx, 1);
+              renderContent();
+            });
+            return;
+          }
+          showToast("Offer 已保存", "success");
+          await refreshActivities();
+        };
+        formDiv.querySelector(".ivf-cancel").onclick = () => { formDiv.innerHTML = ""; };
+      }
+    }
+
+    renderTail();
+    renderNextStep();
+
+    // bind note edit buttons in notes section
+    inner.querySelectorAll(`#pt-notes-${l.id} .activity-edit-btn`).forEach(btn => {
+      btn.onclick = () => {
+        const actId = parseInt(btn.dataset.id);
+        const act = activities.find(a => a.id === actId);
+        if (!act) return;
+        const card = inner.querySelector(`.activity-card[data-activity-id="${actId}"]`);
+        const formDiv = document.createElement("div");
+        formDiv.className = "iv-edit-form";
+        formDiv.innerHTML = renderNoteFormHTML(act);
+        card.replaceWith(formDiv);
+        formDiv.querySelector(".ivf-cancel").onclick = () => formDiv.replaceWith(card);
+        formDiv.querySelector(".ivf-save").onclick = async () => {
+          await api.patch(`/api/activities/${actId}`, getNoteFormData(formDiv));
+          await refreshActivities();
+        };
+      };
+    });
+
+    // note button — always visible
+    inner.querySelector(".pt-note-btn").onclick = () => {
+      const noteFormDiv = document.createElement("div");
+      noteFormDiv.style.cssText = "margin-top:8px";
+      noteFormDiv.innerHTML = renderNoteFormHTML();
+      inner.querySelector(`#pt-notes-${l.id}`).prepend(noteFormDiv);
+      noteFormDiv.querySelector(".ivf-save").onclick = async () => {
+        await api.post("/api/activities", { link_id: l.id, type: "note", ...getNoteFormData(noteFormDiv) });
+        showToast("备注已保存", "success");
+        await refreshActivities();
+      };
+      noteFormDiv.querySelector(".ivf-cancel").onclick = () => noteFormDiv.remove();
     };
 
     // withdraw button
@@ -1484,6 +1978,9 @@ async function renderPipelineTracking(el) {
         if (keepBlock) keepBlock.style.display = "none";
         await api.patch(`/api/pipeline/link/${l.id}/transfer`, { new_job_id: newJobId, keep_records: keepRecords });
         showToast("已转移岗位", "success");
+        const freshLinks = await api.get("/api/pipeline/active");
+        links.length = 0;
+        links.push(...freshLinks);
         renderContent();
       });
     };

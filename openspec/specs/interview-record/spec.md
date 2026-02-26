@@ -1,30 +1,16 @@
-## ADDED Requirements
+## Purpose
+面试记录已迁移至统一的 activity_records 表，本 spec 记录迁移说明。
 
-### Requirement: 创建面试记录
-系统 SHALL 允许 HR 为候选人-岗位关联创建面试记录，包含轮次、面试官、时间、评分、评语、结论。
+## REMOVED Requirements
 
-#### Scenario: 成功创建面试记录
-- **WHEN** HR 填写面试轮次、面试官姓名、面试时间、评分（1-5）、评语、结论（通过/待定/淘汰）并提交
-- **THEN** 系统保存面试记录并在看板卡片中展示
+### Requirement: Interview records stored in interview_records table
+**Reason**: Replaced by unified activity_records table which supports multiple activity types and stage-based grouping.
+**Migration**: All existing interview_records data is migrated to activity_records with type='interview' at startup. The interview_records table is renamed to interview_records_bak.
 
-#### Scenario: 评分超出范围
-- **WHEN** HR 输入评分不在 1-5 范围内
-- **THEN** 系统拒绝保存并提示"评分须在 1-5 之间"
+### Requirement: /api/interviews endpoints
+**Reason**: Replaced by /api/activities endpoints.
+**Migration**: Frontend updated to call /api/activities. No external consumers.
 
-### Requirement: 查看面试记录列表
-系统 SHALL 在看板卡片展开时显示该候选人在该岗位的所有面试记录，按时间倒序排列。
-
-#### Scenario: 有面试记录
-- **WHEN** HR 展开看板卡片
-- **THEN** 系统显示所有面试记录，每条包含轮次、面试官、时间、评分、结论
-
-#### Scenario: 无面试记录
-- **WHEN** HR 展开看板卡片且该候选人尚无面试记录
-- **THEN** 系统显示"暂无面试记录"
-
-### Requirement: 删除面试记录
-系统 SHALL 允许 HR 删除单条面试记录。
-
-#### Scenario: 成功删除
-- **WHEN** HR 点击某条面试记录的删除按钮并确认
-- **THEN** 系统删除该记录并刷新列表
+## See Also
+- `activity-records/spec.md` — unified activity records spec
+- `activity-timeline/spec.md` — timeline rendering spec

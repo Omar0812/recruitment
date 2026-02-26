@@ -90,7 +90,10 @@
         </div>
         <div class="form-group">
           <label>面试时间</label>
-          <input id="iv-time" type="datetime-local" step="900">
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="iv-time-date" type="date" style="flex:1;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+            <select id="iv-time-slot" style="flex:1;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;background:#fff"></select>
+          </div>
         </div>
         <div class="form-group form-full">
           <label>评分</label>
@@ -119,10 +122,22 @@
         </div>
         <div class="form-group form-full" id="iv-rejection-reason-block" style="display:none">
           <label>淘汰原因</label>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px" id="iv-rejection-reason-btns">
-            <button type="button" class="iv-reason-btn" data-v="能力不匹配">能力不匹配</button>
-            <button type="button" class="iv-reason-btn" data-v="薪资期望差距">薪资期望差距</button>
+          <div style="font-size:11px;color:#888;margin:4px 0 2px">能力维度</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px" id="iv-rejection-reason-btns">
+            <button type="button" class="iv-reason-btn" data-v="技术/专业能力不达标">技术/专业能力不达标</button>
+            <button type="button" class="iv-reason-btn" data-v="综合素质不匹配">综合素质不匹配</button>
+            <button type="button" class="iv-reason-btn" data-v="经验年限不足">经验年限不足</button>
+          </div>
+          <div style="font-size:11px;color:#888;margin:4px 0 2px">意愿维度</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+            <button type="button" class="iv-reason-btn" data-v="薪资期望差距过大">薪资期望差距过大</button>
             <button type="button" class="iv-reason-btn" data-v="候选人主动放弃">候选人主动放弃</button>
+            <button type="button" class="iv-reason-btn" data-v="地点/出行不接受">地点/出行不接受</button>
+          </div>
+          <div style="font-size:11px;color:#888;margin:4px 0 2px">流程维度</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+            <button type="button" class="iv-reason-btn" data-v="背调未通过">背调未通过</button>
+            <button type="button" class="iv-reason-btn" data-v="入职前反悔">入职前反悔</button>
             <button type="button" class="iv-reason-btn" data-v="其他">其他</button>
           </div>
           <input id="iv-rejection-reason" type="hidden">
@@ -158,12 +173,24 @@
 
   <!-- 候选人退出弹窗 -->
   <div id="withdraw-overlay" class="modal-overlay hidden">
-    <div class="modal" style="max-width:360px">
+    <div class="modal" style="max-width:400px">
       <h2>候选人退出</h2>
       <p id="withdraw-info" style="font-size:13px;color:#555;margin:8px 0 12px"></p>
       <div class="form-group">
-        <label>退出原因</label>
-        <textarea id="withdraw-reason" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px;min-height:80px;box-sizing:border-box;margin-top:6px" placeholder="请填写退出原因（选填）"></textarea>
+        <label>退出原因 <span style="color:#dc2626">*</span></label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px" id="withdraw-reason-btns">
+          <button type="button" class="iv-reason-btn" data-v="接受了其他Offer">接受了其他Offer</button>
+          <button type="button" class="iv-reason-btn" data-v="薪资未达预期">薪资未达预期</button>
+          <button type="button" class="iv-reason-btn" data-v="岗位职责不符合预期">岗位职责不符合预期</button>
+          <button type="button" class="iv-reason-btn" data-v="个人原因（家庭/健康等）">个人原因（家庭/健康等）</button>
+          <button type="button" class="iv-reason-btn" data-v="地点/出行问题">地点/出行问题</button>
+          <button type="button" class="iv-reason-btn" data-v="其他">其他</button>
+        </div>
+        <input id="withdraw-reason-value" type="hidden">
+      </div>
+      <div class="form-group" style="margin-top:10px">
+        <label>补充说明（选填）</label>
+        <textarea id="withdraw-reason-note" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px;min-height:60px;box-sizing:border-box;margin-top:6px" placeholder="可填写补充说明..."></textarea>
       </div>
       <div class="modal-actions">
         <button id="withdraw-cancel" class="btn btn-secondary">取消</button>
