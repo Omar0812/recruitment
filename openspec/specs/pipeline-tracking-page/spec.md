@@ -34,12 +34,30 @@
 - **THEN** 系统跳过该记录继续过滤，不抛出 TypeError
 
 ### Requirement: 分组内快捷操作
-每条候选人记录 SHALL 提供"看板"链接（跳转至对应岗位看板）和"淘汰"快捷按钮。
-
-#### Scenario: 点击看板链接
-- **WHEN** HR 点击某条记录的"看板"链接
-- **THEN** 系统跳转至该候选人所在岗位的看板页面
+每条候选人记录 SHALL 提供展开行操作（推进阶段、安排面试、退出、转岗）。
 
 #### Scenario: 快捷淘汰
 - **WHEN** HR 点击"淘汰"按钮
 - **THEN** 系统弹出淘汰原因选择弹窗，确认后更新该候选人-岗位关联的 outcome 为 rejected
+
+### Requirement: Withdraw removes candidate from active list
+After a candidate withdraws, they SHALL be immediately removed from the in-progress list without requiring a page refresh.
+
+#### Scenario: Withdraw confirmed
+- **WHEN** user confirms withdrawal in the withdraw overlay
+- **THEN** the candidate's link entry is removed from the local links array and the list re-renders without that candidate
+
+#### Scenario: Hire confirmed
+- **WHEN** user confirms hire in the hire overlay
+- **THEN** the candidate's link entry is removed from the local links array and the list re-renders without that candidate
+
+### Requirement: Stage dropdown has no duplicate 已入职 option
+The stage dropdown in the expanded row SHALL show each stage exactly once, with a single "已入职" option at the end that triggers the hire confirmation overlay.
+
+#### Scenario: Job stages contain 已入职
+- **WHEN** a job's stages array includes "已入职"
+- **THEN** the dropdown renders it only once (the hardcoded __hire__ option), not twice
+
+#### Scenario: Job stages do not contain 已入职
+- **WHEN** a job's stages array does not include "已入职"
+- **THEN** the dropdown renders all job stages plus one "已入职" option at the end

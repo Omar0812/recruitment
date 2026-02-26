@@ -12,7 +12,7 @@
       <div class="logo">招聘管理</div>
       <nav>
         <a href="#/" class="nav-item" data-page="dashboard">首页</a>
-        <a href="#/pipeline" class="nav-item" data-page="pipeline">流程跟进</a>
+        <a href="#/pipeline" class="nav-item" data-page="pipeline">进行中</a>
         <a href="#/talent" class="nav-item" data-page="talent">人才库</a>
         <a href="#/jobs" class="nav-item" data-page="jobs">岗位库</a>
         <a href="#/analytics" class="nav-item" data-page="analytics">数据分析</a>
@@ -60,6 +60,13 @@
       <h2>关联岗位</h2>
       <div class="form-group" style="margin-top:12px">
         <select id="link-job-select" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px"></select>
+      </div>
+      <div id="link-job-keep-records-block" class="form-group" style="margin-top:10px;display:none">
+        <label style="font-size:13px;color:#555">是否保留面试记录？</label>
+        <div style="display:flex;gap:16px;margin-top:6px">
+          <label style="font-size:13px;cursor:pointer"><input type="radio" name="keep-records" value="keep" style="margin-right:4px">保留</label>
+          <label style="font-size:13px;cursor:pointer"><input type="radio" name="keep-records" value="fresh" checked style="margin-right:4px">从头开始</label>
+        </div>
       </div>
       <div class="modal-actions">
         <button id="link-job-cancel" class="btn btn-secondary">取消</button>
@@ -110,6 +117,17 @@
           </div>
           <input id="iv-conclusion" type="hidden">
         </div>
+        <div class="form-group form-full" id="iv-rejection-reason-block" style="display:none">
+          <label>淘汰原因</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px" id="iv-rejection-reason-btns">
+            <button type="button" class="iv-reason-btn" data-v="能力不匹配">能力不匹配</button>
+            <button type="button" class="iv-reason-btn" data-v="薪资期望差距">薪资期望差距</button>
+            <button type="button" class="iv-reason-btn" data-v="候选人主动放弃">候选人主动放弃</button>
+            <button type="button" class="iv-reason-btn" data-v="其他">其他</button>
+          </div>
+          <input id="iv-rejection-reason" type="hidden">
+          <input id="iv-rejection-reason-other" type="text" placeholder="请填写原因" style="display:none;margin-top:8px;width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">
+        </div>
       </div>
       <div class="modal-actions">
         <button id="iv-cancel" class="btn btn-secondary">取消</button>
@@ -134,6 +152,34 @@
       <div class="modal-actions">
         <button id="reject-cancel" class="btn btn-secondary">取消</button>
         <button id="reject-confirm" class="btn btn-danger">确认淘汰</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 候选人退出弹窗 -->
+  <div id="withdraw-overlay" class="modal-overlay hidden">
+    <div class="modal" style="max-width:360px">
+      <h2>候选人退出</h2>
+      <p id="withdraw-info" style="font-size:13px;color:#555;margin:8px 0 12px"></p>
+      <div class="form-group">
+        <label>退出原因</label>
+        <textarea id="withdraw-reason" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px;min-height:80px;box-sizing:border-box;margin-top:6px" placeholder="请填写退出原因（选填）"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button id="withdraw-cancel" class="btn btn-secondary">取消</button>
+        <button id="withdraw-confirm" class="btn btn-danger">确认退出</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 确认入职弹窗 -->
+  <div id="hire-overlay" class="modal-overlay hidden">
+    <div class="modal" style="max-width:360px">
+      <h2>确认入职</h2>
+      <p id="hire-info" style="font-size:13px;color:#555;margin:8px 0 16px"></p>
+      <div class="modal-actions">
+        <button id="hire-cancel" class="btn btn-secondary">取消</button>
+        <button id="hire-confirm" class="btn btn-primary">确认入职</button>
       </div>
     </div>
   </div>

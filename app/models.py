@@ -105,6 +105,7 @@ class InterviewRecord(Base):
     status = Column(String, default="completed")   # scheduled / completed / cancelled
     scheduled_at = Column(DateTime, nullable=True)
     location = Column(String, nullable=True)
+    rejection_reason = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     link = relationship("CandidateJobLink", back_populates="interview_records")

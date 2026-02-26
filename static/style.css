@@ -431,19 +431,22 @@ body {
   color: #555;
 }
 .pt-dot {
-  width: 10px;
-  height: 10px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  background: #d1d5db;
+  background: transparent;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #4f46e5;
+  cursor: default;
 }
-.pt-dot.done { background: #4f46e5; }
-.pt-dot.current {
-  background: #4f46e5;
-  box-shadow: 0 0 0 3px #e0e7ff;
-}
+.pt-dot.done { color: #4f46e5; }
+.pt-dot.cancelled { color: #dc2626; }
 .pt-dot-line {
-  width: 16px;
+  width: 12px;
   height: 2px;
   background: #e5e7eb;
   flex-shrink: 0;
@@ -656,6 +659,23 @@ body {
   background: #f3f4f6;
   color: #6b7280;
   font-size: 11px;
+}
+
+/* Rejection reason buttons */
+.iv-reason-btn, .ivf-reason-btn {
+  padding: 4px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  color: #555;
+}
+.iv-reason-btn.active, .ivf-reason-btn.active {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
+  font-weight: 600;
 }
 
 /* Collapsible comment (task 6.4) */

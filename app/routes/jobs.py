@@ -120,7 +120,7 @@ def list_jobs(
     jobs = query.order_by(Job.created_at.desc()).all()
     result = []
     for job in jobs:
-        active_links = [lnk for lnk in job.candidate_links if lnk.outcome is None]
+        active_links = [lnk for lnk in job.candidate_links if lnk.outcome is None and (lnk.candidate is None or lnk.candidate.deleted_at is None)]
         last_activity = None
         if active_links:
             last_activity = max((lnk.updated_at for lnk in active_links if lnk.updated_at), default=None)

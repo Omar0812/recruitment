@@ -33,6 +33,7 @@ with engine.connect() as conn:
         "ALTER TABLE interview_records ADD COLUMN status VARCHAR DEFAULT 'completed'",
         "ALTER TABLE interview_records ADD COLUMN scheduled_at DATETIME",
         "ALTER TABLE interview_records ADD COLUMN location VARCHAR",
+        "ALTER TABLE interview_records ADD COLUMN rejection_reason TEXT",
     ):
         try:
             conn.execute(__import__("sqlalchemy").text(stmt))

@@ -5,7 +5,7 @@ from typing import Optional
 from datetime import datetime
 
 from app.database import get_db
-from app.models import CandidateJobLink, Job, Candidate, HistoryEntry
+from app.models import CandidateJobLink, Job, Candidate, HistoryEntry, InterviewRecord
 
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
 
@@ -23,6 +23,10 @@ class StageUpdate(BaseModel):
 class OutcomeUpdate(BaseModel):
     outcome: str  # rejected / withdrawn
     rejection_reason: Optional[str] = None
+
+
+class WithdrawUpdate(BaseModel):
+    reason: Optional[str] = None
 
 
 class NotesUpdate(BaseModel):
@@ -124,21 +128,97 @@ def update_outcome(link_id: int, data: OutcomeUpdate, db: Session = Depends(get_
 
 
 @router.patch("/link/{link_id}/withdraw")
-def withdraw_candidate(link_id: int, db: Session = Depends(get_db)):
-    lnk = db.query(CandidateJobLink).filter(CandidateJobLink.id == link_id).first()
+def withdraw_candidate(link_id: int, data: WithdrawUpdate = WithdrawUpdate(), db: Session = Depends(get_db)):
+    lnk = db.query(CandidateJobLink).filter(
+        CandidateJobLink.id == link_id,
+        CandidateJobLink.candidate.has(Candidate.deleted_at.is_(None))
+    ).first()
     if not lnk:
         raise HTTPException(status_code=404, detail="关联不存在")
     lnk.outcome = "withdrawn"
+    if data.reason:
+        lnk.rejection_reason = data.reason
     lnk.updated_at = datetime.utcnow()
+    reason_str = f"（{data.reason}）" if data.reason else ""
     db.add(HistoryEntry(
         candidate_id=lnk.candidate_id,
         job_id=lnk.job_id,
         event_type="outcome",
-        detail="结果：候选人退出",
+        detail=f"结果：候选人退出{reason_str}",
     ))
     db.commit()
     db.refresh(lnk)
     return link_to_dict(lnk)
+
+
+@router.patch("/link/{link_id}/hire")
+def hire_candidate(link_id: int, db: Session = Depends(get_db)):
+    lnk = db.query(CandidateJobLink).filter(
+        CandidateJobLink.id == link_id,
+        CandidateJobLink.candidate.has(Candidate.deleted_at.is_(None))
+    ).first()
+    if not lnk:
+        raise HTTPException(status_code=404, detail="关联不存在")
+    lnk.outcome = "hired"
+    lnk.updated_at = datetime.utcnow()
+    job_title = lnk.job.title if lnk.job else f"岗位#{lnk.job_id}"
+    db.add(HistoryEntry(
+        candidate_id=lnk.candidate_id,
+        job_id=lnk.job_id,
+        event_type="outcome",
+        detail=f"结果：已入职「{job_title}」",
+    ))
+    db.commit()
+    db.refresh(lnk)
+    return link_to_dict(lnk)
+
+
+class TransferJob(BaseModel):
+    new_job_id: int
+    keep_records: bool = False
+
+
+@router.patch("/link/{link_id}/transfer")
+def transfer_job(link_id: int, data: TransferJob, db: Session = Depends(get_db)):
+    lnk = db.query(CandidateJobLink).filter(
+        CandidateJobLink.id == link_id,
+        CandidateJobLink.candidate.has(Candidate.deleted_at.is_(None))
+    ).first()
+    if not lnk:
+        raise HTTPException(status_code=404, detail="关联不存在")
+    new_job = db.query(Job).filter(Job.id == data.new_job_id).first()
+    if not new_job:
+        raise HTTPException(status_code=404, detail="目标岗位不存在")
+
+    # Close old link
+    lnk.outcome = "withdrawn"
+    lnk.updated_at = datetime.utcnow()
+
+    # Create new link
+    new_stage = new_job.stages[0] if new_job.stages else "简历筛选"
+    new_lnk = CandidateJobLink(
+        candidate_id=lnk.candidate_id,
+        job_id=data.new_job_id,
+        stage=new_stage,
+    )
+    db.add(new_lnk)
+    db.flush()
+
+    if data.keep_records:
+        db.query(InterviewRecord).filter(
+            InterviewRecord.link_id == link_id
+        ).update({"link_id": new_lnk.id})
+
+    db.add(HistoryEntry(
+        candidate_id=lnk.candidate_id,
+        job_id=data.new_job_id,
+        event_type="stage_change",
+        detail=f"转移至岗位「{new_job.title}」，阶段：{new_stage}",
+    ))
+    db.commit()
+    db.refresh(new_lnk)
+    return link_to_dict(new_lnk)
+
 
 
 @router.patch("/link/{link_id}/notes")

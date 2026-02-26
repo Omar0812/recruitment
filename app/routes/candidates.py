@@ -139,8 +139,6 @@ def check_duplicate(data: DuplicateCheckRequest, db: Session = Depends(get_db)):
         add_matches(db.query(Candidate).filter(Candidate.name == data.name, Candidate.last_company == data.last_company, Candidate.deleted_at.is_(None)).all())
 
     return {"matches": matches}
-    db.refresh(candidate)
-    return candidate_to_dict(candidate)
 
 
 @router.get("")
@@ -158,6 +156,7 @@ def list_candidates(
         query = query.filter(
             or_(
                 Candidate.name.ilike(f"%{q}%"),
+                Candidate.name_en.ilike(f"%{q}%"),
                 Candidate.phone.ilike(f"%{q}%"),
                 Candidate.email.ilike(f"%{q}%"),
             )
@@ -179,6 +178,10 @@ def list_candidates(
         d["active_links"] = [
             {"job_id": lnk.job_id, "job_title": lnk.job.title if lnk.job else None, "stage": lnk.stage}
             for lnk in c.job_links if not lnk.outcome
+        ]
+        d["job_links"] = [
+            {"id": lnk.id, "job_id": lnk.job_id, "job_title": lnk.job.title if lnk.job else None, "outcome": lnk.outcome}
+            for lnk in c.job_links
         ]
         result.append(d)
     return result
@@ -205,6 +208,7 @@ def get_candidate(candidate_id: int, db: Session = Depends(get_db)):
             "id": lnk.id,
             "job_id": lnk.job_id,
             "job_title": lnk.job.title if lnk.job else None,
+            "job_stages": lnk.job.stages if lnk.job and lnk.job.stages else [],
             "stage": lnk.stage,
             "notes": lnk.notes,
             "outcome": lnk.outcome,
@@ -219,7 +223,7 @@ def get_candidate(candidate_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/{candidate_id}")
 def update_candidate(candidate_id: int, data: CandidateUpdate, db: Session = Depends(get_db)):
-    c = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    c = db.query(Candidate).filter(Candidate.id == candidate_id, Candidate.deleted_at.is_(None)).first()
     if not c:
         raise HTTPException(status_code=404, detail="候选人不存在")
     for field, value in data.model_dump(exclude_none=True).items():
