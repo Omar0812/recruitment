@@ -9,7 +9,7 @@ from app.models import ActivityRecord, CandidateJobLink
 
 router = APIRouter(prefix="/api/activities", tags=["activities"])
 
-CHAIN_TYPES = {"resume_review", "interview", "offer"}
+CHAIN_TYPES = {"resume_review", "interview", "offer", "onboard"}
 # phone_screen is retired but kept in STAGE_LABEL for historical data display
 _RETIRED_CHAIN_TYPES = {"phone_screen"}
 
@@ -17,6 +17,7 @@ STAGE_LABEL = {
     "resume_review": "简历筛选",
     "phone_screen": "电话初筛",
     "offer": "Offer",
+    "onboard": "入职确认",
 }
 
 
@@ -149,8 +150,17 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
             stage = data.round or "面试"
         elif data.type == "offer":
             stage = "Offer"
+        elif data.type == "onboard":
+            stage = "入职确认"
         else:
             stage = lnk.stage or ""
+
+    # onboard 自动设置 conclusion/status
+    conclusion = data.conclusion
+    status = data.status
+    if data.type == "onboard":
+        conclusion = "已入职"
+        status = "completed"
 
     record = ActivityRecord(
         link_id=data.link_id,
@@ -158,13 +168,13 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
         stage=stage,
         actor=data.actor,
         comment=data.comment,
-        conclusion=data.conclusion,
+        conclusion=conclusion,
         rejection_reason=data.rejection_reason,
         round=data.round,
         interview_time=data.interview_time,
         scheduled_at=data.scheduled_at,
         location=data.location,
-        status=data.status,
+        status=status,
         score=data.score,
         salary=data.salary,
         start_date=data.start_date,
@@ -174,6 +184,12 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
     db.add(record)
     db.flush()
     _sync_stage(data.link_id, db)
+
+    # onboard 完成后自动标记 hired
+    if data.type == "onboard":
+        lnk.outcome = "hired"
+        lnk.updated_at = datetime.utcnow()
+
     db.commit()
     db.refresh(record)
     return record_to_dict(record)

@@ -29,11 +29,10 @@ function formatTime(isoStr) {
 
 // ── Toast helper ──────────────────────────────────────────────────────────────
 function showToast(msg, type = "info") {
-  const colors = { success: "#166534", error: "#dc2626", info: "#1a1a2e" };
-  const bg = { success: "#dcfce7", error: "#fee2e2", info: "#e0e7ff" };
+  const cls = { success: "toast-success", error: "toast-error", info: "toast-info" };
   const el = document.createElement("div");
   el.textContent = msg;
-  el.style.cssText = `position:fixed;top:20px;right:20px;z-index:9999;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:500;color:${colors[type]||colors.info};background:${bg[type]||bg.info};box-shadow:0 2px 12px rgba(0,0,0,0.12);transition:opacity 0.3s`;
+  el.className = "toast " + (cls[type] || cls.info);
   document.body.appendChild(el);
   setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 300); }, 2000);
 }
@@ -51,134 +50,208 @@ async function withLoading(btn, asyncFn) {
   }
 }
 
-// ── Interview overlay (for kanban) ────────────────────────────────────────────
-function openInterviewOverlay(linkId, round, stage, onSave) {
-  const overlay = document.getElementById("interview-overlay");
-  // reset fields
-  document.getElementById("iv-round").value = round || "";
-  document.getElementById("iv-round-label").textContent = round || "";
-  document.getElementById("iv-interviewer").value = "";
-  document.getElementById("iv-time-date").value = "";
-  document.getElementById("iv-time-slot").value = "09:00";
-  document.getElementById("iv-score").value = "";
-  document.getElementById("iv-comment").value = "";
-  document.getElementById("iv-conclusion").value = "";
-  // reset stars
-  document.querySelectorAll(".iv-star").forEach(s => s.classList.remove("active"));
-  // reset conclusion buttons
-  document.querySelectorAll("#interview-overlay .iv-conclusion-btn").forEach(b => b.classList.remove("active"));
-  // reset rejection reason block
-  const rejBlock = document.getElementById("iv-rejection-reason-block");
-  if (rejBlock) {
-    rejBlock.style.display = "none";
-    document.getElementById("iv-rejection-reason").value = "";
-    document.querySelectorAll("#iv-rejection-reason-btns .iv-reason-btn").forEach(b => b.classList.remove("active"));
-    const otherInput = document.getElementById("iv-rejection-reason-other");
-    if (otherInput) { otherInput.style.display = "none"; otherInput.value = ""; }
+// ── Dialog helpers ────────────────────────────────────────────────────────────
+function openDialog(title, contentHTML, options = {}) {
+  const overlay = document.getElementById("dialog-overlay");
+  document.getElementById("dialog-title").textContent = title;
+  document.getElementById("dialog-body").innerHTML = contentHTML;
+  const footer = document.getElementById("dialog-footer");
+  footer.innerHTML = "";
+  if (options.onConfirm) {
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn btn-secondary";
+    cancelBtn.textContent = options.cancelText || "取消";
+    cancelBtn.onclick = closeDialog;
+    footer.appendChild(cancelBtn);
+    const confirmBtn = document.createElement("button");
+    confirmBtn.className = "btn " + (options.confirmClass || "btn-primary");
+    confirmBtn.textContent = options.confirmText || "确认";
+    confirmBtn.onclick = options.onConfirm;
+    footer.appendChild(confirmBtn);
   }
   overlay.classList.remove("hidden");
-
-  document.getElementById("iv-cancel").onclick = () => overlay.classList.add("hidden");
-  const confirmBtn = document.getElementById("iv-confirm");
-  confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
-    const rejection_reason = document.getElementById("iv-rejection-reason")?.value || null;
-    const conclusion = document.getElementById("iv-conclusion").value || null;
-    const dateVal = document.getElementById("iv-time-date").value;
-    const slotVal = document.getElementById("iv-time-slot").value;
-    const interview_time = dateVal ? `${dateVal}T${slotVal}:00` : null;
-    await api.post("/api/activities", {
-      link_id: parseInt(linkId),
-      type: "interview",
-      stage: stage || "",
-      round: document.getElementById("iv-round").value || null,
-      actor: document.getElementById("iv-interviewer").value || null,
-      interview_time,
-      score: parseInt(document.getElementById("iv-score").value) || null,
-      comment: document.getElementById("iv-comment").value || null,
-      conclusion,
-      rejection_reason: rejection_reason || null,
-      status: "completed",
-    });
-    if (conclusion === "淘汰") {
-      await api.patch(`/api/pipeline/link/${linkId}/outcome`, { outcome: "rejected", rejection_reason: rejection_reason || null });
-    }
-    overlay.classList.add("hidden");
-    showToast("面试记录已保存", "success");
-    if (onSave) onSave();
-  });
+  document.getElementById("dialog-close-btn").onclick = closeDialog;
+  if (options.onOpen) options.onOpen();
 }
 
-// bind star + conclusion interactivity for the overlay (called once on DOMContentLoaded)
-function initInterviewOverlay() {
-  // populate time slot select
-  const slotSelect = document.getElementById("iv-time-slot");
-  if (slotSelect) {
-    for (let h = 8; h <= 22; h++) {
-      for (let m = 0; m < 60; m += 15) {
-        if (h === 22 && m > 0) break;
-        const hh = String(h).padStart(2, "0");
-        const mm = String(m).padStart(2, "0");
-        const opt = document.createElement("option");
-        opt.value = `${hh}:${mm}`;
-        opt.textContent = `${hh}:${mm}`;
-        slotSelect.appendChild(opt);
-      }
-    }
-  }
-  // stars
-  const stars = document.querySelectorAll("#iv-score-stars .iv-star");
-  stars.forEach(star => {
-    star.addEventListener("mouseenter", () => {
-      const v = parseInt(star.dataset.v);
-      stars.forEach(s => s.classList.toggle("active", parseInt(s.dataset.v) <= v));
-    });
-    star.addEventListener("mouseleave", () => {
-      const cur = parseInt(document.getElementById("iv-score").value) || 0;
-      stars.forEach(s => s.classList.toggle("active", parseInt(s.dataset.v) <= cur));
-    });
-    star.addEventListener("click", () => {
-      const v = parseInt(star.dataset.v);
-      document.getElementById("iv-score").value = v;
-      stars.forEach(s => s.classList.toggle("active", parseInt(s.dataset.v) <= v));
-    });
-  });
-  document.getElementById("iv-score-clear").onclick = () => {
-    document.getElementById("iv-score").value = "";
-    stars.forEach(s => s.classList.remove("active"));
-  };
-  // conclusion buttons + rejection reason toggle
-  document.querySelectorAll("#interview-overlay .iv-conclusion-btn").forEach(btn => {
+function closeDialog() {
+  const overlay = document.getElementById("dialog-overlay");
+  overlay.classList.add("hidden");
+  document.getElementById("dialog-body").innerHTML = "";
+  document.getElementById("dialog-footer").innerHTML = "";
+}
+
+// ── Interview overlay (for kanban) ────────────────────────────────────────────
+
+// Shared rejection reason form renderer
+function renderRejectionReasonForm(prefix, currentReason) {
+  const presetReasons = ["技术/专业能力不达标","综合素质不匹配","经验年限不足","薪资期望差距过大","候选人主动放弃","地点/出行不接受","背调未通过","入职前反悔"];
+  const isCustomReason = currentReason && !presetReasons.includes(currentReason);
+  const groups = [
+    { label: "能力维度", items: ["技术/专业能力不达标","综合素质不匹配","经验年限不足"] },
+    { label: "意愿维度", items: ["薪资期望差距过大","候选人主动放弃","地点/出行不接受"] },
+    { label: "流程维度", items: ["背调未通过","入职前反悔","其他"] },
+  ];
+  const btnsHTML = groups.map(g => `
+    <div style="font-size:11px;color:#888;margin:2px 0">${g.label}</div>
+    <div class="action-btn-group" style="flex-wrap:wrap;margin-bottom:4px">
+      ${g.items.map(v => {
+        const isActive = v === "其他" ? isCustomReason : currentReason === v;
+        return `<button type="button" class="${prefix}-reason-btn iv-reason-btn${isActive?" active":""}" data-v="${v}">${v}</button>`;
+      }).join("")}
+    </div>`).join("");
+  return `
+    <label>淘汰原因</label>
+    ${btnsHTML}
+    <input class="${prefix}-rejection-reason" type="hidden" value="${currentReason||""}">
+    <input class="${prefix}-rejection-reason-other" type="text" placeholder="请填写原因" class="${isCustomReason ? "" : "hidden"}" style="margin-top:8px;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box" value="${isCustomReason ? currentReason : ""}">`;
+}
+
+function bindRejectionReasonForm(container, prefix) {
+  container.querySelectorAll(`.${prefix}-reason-btn`).forEach(btn => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll("#interview-overlay .iv-conclusion-btn").forEach(b => b.classList.remove("active"));
+      container.querySelectorAll(`.${prefix}-reason-btn`).forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
-      document.getElementById("iv-conclusion").value = btn.dataset.v;
-      const block = document.getElementById("iv-rejection-reason-block");
-      if (block) {
-        block.style.display = btn.dataset.v === "淘汰" ? "" : "none";
-        if (btn.dataset.v !== "淘汰") {
-          document.getElementById("iv-rejection-reason").value = "";
-          document.querySelectorAll("#iv-rejection-reason-btns .iv-reason-btn").forEach(b => b.classList.remove("active"));
-        }
-      }
+      container.querySelector(`.${prefix}-rejection-reason`).value = btn.dataset.v;
+      const otherInput = container.querySelector(`.${prefix}-rejection-reason-other`);
+      if (otherInput) btn.dataset.v === "其他" ? otherInput.classList.remove("hidden") : otherInput.classList.add("hidden");
     });
   });
-  // rejection reason buttons in overlay
-  document.querySelectorAll("#iv-rejection-reason-btns .iv-reason-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("#iv-rejection-reason-btns .iv-reason-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      document.getElementById("iv-rejection-reason").value = btn.dataset.v;
-      const otherInput = document.getElementById("iv-rejection-reason-other");
-      if (otherInput) otherInput.style.display = btn.dataset.v === "其他" ? "" : "none";
-    });
-  });
-  const otherInput = document.getElementById("iv-rejection-reason-other");
+  const otherInput = container.querySelector(`.${prefix}-rejection-reason-other`);
   if (otherInput) {
-    otherInput.oninput = () => {
-      document.getElementById("iv-rejection-reason").value = otherInput.value;
-    };
+    otherInput.oninput = () => { container.querySelector(`.${prefix}-rejection-reason`).value = otherInput.value; };
   }
 }
+
+function openInterviewOverlay(linkId, round, stage, onSave) {
+  const timeSlotOptions = [];
+  for (let h = 8; h <= 22; h++) {
+    for (let m = 0; m < 60; m += 15) {
+      if (h === 22 && m > 0) break;
+      const hh = String(h).padStart(2, "0");
+      const mm = String(m).padStart(2, "0");
+      timeSlotOptions.push(`<option value="${hh}:${mm}">${hh}:${mm}</option>`);
+    }
+  }
+
+  const html = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <span id="dlg-iv-round-label" style="font-size:13px;color:var(--c-accent);font-weight:600;background:#e0e7ff;padding:3px 10px;border-radius:12px">${round || ""}</span>
+    </div>
+    <div class="form-grid" style="margin-top:4px">
+      <div class="form-group">
+        <label>面试官</label>
+        <input id="dlg-iv-interviewer" placeholder="面试官姓名">
+      </div>
+      <div class="form-group">
+        <label>面试时间</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="dlg-iv-time-date" type="date" style="flex:1;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+          <select id="dlg-iv-time-slot" style="flex:1;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;background:#fff">${timeSlotOptions.join("")}</select>
+        </div>
+      </div>
+      <div class="form-group form-full">
+        <label>评分</label>
+        <div id="dlg-iv-score-stars" style="display:flex;gap:4px;margin-top:6px">
+          <span class="iv-star" data-v="1">★</span>
+          <span class="iv-star" data-v="2">★</span>
+          <span class="iv-star" data-v="3">★</span>
+          <span class="iv-star" data-v="4">★</span>
+          <span class="iv-star" data-v="5">★</span>
+          <span id="dlg-iv-score-clear" style="font-size:12px;color:#bbb;cursor:pointer;align-self:center;margin-left:6px">清除</span>
+        </div>
+        <input id="dlg-iv-score" type="hidden">
+      </div>
+      <div class="form-group form-full">
+        <label>评语</label>
+        <textarea id="dlg-iv-comment" style="min-height:60px"></textarea>
+      </div>
+      <div class="form-group form-full">
+        <label>结论</label>
+        <div class="action-btn-group" style="margin-top:6px">
+          <button type="button" class="iv-conclusion-btn dlg-iv-conclusion-btn" data-v="">待定</button>
+          <button type="button" class="iv-conclusion-btn dlg-iv-conclusion-btn" data-v="通过">通过</button>
+          <button type="button" class="iv-conclusion-btn iv-conclusion-reject dlg-iv-conclusion-btn" data-v="淘汰">淘汰</button>
+        </div>
+        <input id="dlg-iv-conclusion" type="hidden">
+      </div>
+      <div class="form-group form-full hidden" id="dlg-iv-rejection-block">
+        ${renderRejectionReasonForm("dlg-iv", "")}
+      </div>
+    </div>`;
+
+  openDialog("填写面评", html, {
+    confirmText: "保存",
+    onConfirm: async () => {
+      const rejection_reason = document.getElementById("dlg-iv-rejection-reason")?.value || null;
+      const conclusion = document.getElementById("dlg-iv-conclusion").value || null;
+      const dateVal = document.getElementById("dlg-iv-time-date").value;
+      const slotVal = document.getElementById("dlg-iv-time-slot").value;
+      const interview_time = dateVal ? `${dateVal}T${slotVal}:00` : null;
+      await api.post("/api/activities", {
+        link_id: parseInt(linkId),
+        type: "interview",
+        stage: stage || "",
+        round: round || null,
+        actor: document.getElementById("dlg-iv-interviewer").value || null,
+        interview_time,
+        score: parseInt(document.getElementById("dlg-iv-score").value) || null,
+        comment: document.getElementById("dlg-iv-comment").value || null,
+        conclusion,
+        rejection_reason: rejection_reason || null,
+        status: "completed",
+      });
+      if (conclusion === "淘汰") {
+        await api.patch(`/api/pipeline/link/${linkId}/outcome`, { outcome: "rejected", rejection_reason: rejection_reason || null });
+      }
+      closeDialog();
+      showToast("面试记录已保存", "success");
+      if (onSave) onSave();
+    },
+    onOpen: () => {
+      // stars
+      const stars = document.querySelectorAll("#dlg-iv-score-stars .iv-star");
+      stars.forEach(star => {
+        star.addEventListener("mouseenter", () => {
+          const v = parseInt(star.dataset.v);
+          stars.forEach(s => s.classList.toggle("active", parseInt(s.dataset.v) <= v));
+        });
+        star.addEventListener("mouseleave", () => {
+          const cur = parseInt(document.getElementById("dlg-iv-score").value) || 0;
+          stars.forEach(s => s.classList.toggle("active", parseInt(s.dataset.v) <= cur));
+        });
+        star.addEventListener("click", () => {
+          const v = parseInt(star.dataset.v);
+          document.getElementById("dlg-iv-score").value = v;
+          stars.forEach(s => s.classList.toggle("active", parseInt(s.dataset.v) <= v));
+        });
+      });
+      document.getElementById("dlg-iv-score-clear").onclick = () => {
+        document.getElementById("dlg-iv-score").value = "";
+        stars.forEach(s => s.classList.remove("active"));
+      };
+      // conclusion buttons
+      document.querySelectorAll(".dlg-iv-conclusion-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".dlg-iv-conclusion-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          document.getElementById("dlg-iv-conclusion").value = btn.dataset.v;
+          const block = document.getElementById("dlg-iv-rejection-block");
+          if (btn.dataset.v === "淘汰") { block.classList.remove("hidden"); } else {
+            block.classList.add("hidden");
+            document.getElementById("dlg-iv-rejection-reason").value = "";
+            document.querySelectorAll(".dlg-iv-reason-btn").forEach(b => b.classList.remove("active"));
+          }
+        });
+      });
+      // rejection reason buttons (shared)
+      bindRejectionReasonForm(document.getElementById("dlg-iv-rejection-block"), "dlg-iv");
+    }
+  });
+}
+
+// initInterviewOverlay is no longer needed (overlay is now dynamic)
+function initInterviewOverlay() {}
 
 // ── Form validation ───────────────────────────────────────────────────────────
 function validateCandidateForm({ phone, email, age, years_exp }) {
@@ -187,6 +260,54 @@ function validateCandidateForm({ phone, email, age, years_exp }) {
   if (age !== null && age !== undefined && age !== "" && (isNaN(age) || age < 1 || age > 100)) { showToast("年龄请填写 1-100 之间的数字", "error"); return false; }
   if (years_exp !== null && years_exp !== undefined && years_exp !== "" && (isNaN(years_exp) || years_exp < 0 || years_exp > 50)) { showToast("工作年限请填写 0-50 之间的数字", "error"); return false; }
   return true;
+}
+
+// ── Hired Page ───────────────────────────────────────────────────────────────
+async function renderHiredPage(el) {
+  el.innerHTML = `
+    <div class="page-header"><h1>已入职</h1></div>
+    <div class="filter-bar" style="margin-bottom:16px">
+      <input id="hired-search" type="text" placeholder="搜索候选人姓名..." style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none">
+    </div>
+    <div id="hired-content"><span class="spinner" style="margin:24px"></span></div>`;
+
+  const items = await api.get("/api/pipeline/hired");
+  const contentEl = document.getElementById("hired-content");
+  if (!contentEl) return;
+
+  function renderList(filter) {
+    const filtered = filter
+      ? items.filter(i => (i.candidate_name || "").includes(filter))
+      : items;
+    if (!filtered.length) {
+      contentEl.innerHTML = '<div class="empty-state">暂无已入职人员</div>';
+      return;
+    }
+    const today = new Date();
+    const rows = filtered.map(i => {
+      const startDate = i.start_date || "—";
+      let days = "—";
+      if (i.start_date) {
+        const d = new Date(i.start_date);
+        days = Math.max(0, Math.floor((today - d) / 86400000));
+      }
+      return `<tr>
+        <td><a href="#/candidates/${i.candidate_id}">${i.candidate_name || "未知"}</a></td>
+        <td>${i.job_title || "—"}</td>
+        <td>${startDate}</td>
+        <td>${days}</td>
+        <td>${i.source || "—"}</td>
+      </tr>`;
+    }).join("");
+    contentEl.innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>姓名</th><th>入职岗位</th><th>入职日期</th><th>入职天数</th><th>来源</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  renderList();
+  document.getElementById("hired-search").addEventListener("input", e => renderList(e.target.value.trim()));
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
@@ -204,6 +325,7 @@ function router() {
   const content = document.getElementById("page-content");
   if (hash === "#/" || hash === "#/dashboard") return renderDashboard(content);
   if (hash === "#/candidates" || hash === "#/pipeline" || hash.startsWith("#/pipeline?")) return renderPipelineTracking(content);
+  if (hash === "#/hired") return renderHiredPage(content);
   if (hash.startsWith("#/candidates/")) return renderCandidateProfile(content, hash.split("/")[2]);
   if (hash === "#/talent") return renderTalentPool(content);
   if (hash === "#/analytics") return renderAnalytics(content);
@@ -320,9 +442,8 @@ async function handleFiles(files) {
 function renderEduBlock(edu = {}) {
   const div = document.createElement("div");
   div.className = "block-item";
-  div.style.cssText = "border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:8px;background:#fafafa;position:relative";
   div.innerHTML = `
-    <button type="button" class="block-del" style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:#999;font-size:16px">×</button>
+    <button type="button" class="block-del">×</button>
     <div class="form-grid" style="gap:8px">
       <div class="form-group"><label style="font-size:12px">学历</label><input class="edu-degree" placeholder="如：本科、硕士、博士" value="${edu.degree || ""}"></div>
       <div class="form-group"><label style="font-size:12px">院校</label><input class="edu-school" placeholder="院校名称" value="${edu.school || ""}"></div>
@@ -336,9 +457,8 @@ function renderEduBlock(edu = {}) {
 function renderWorkBlock(work = {}) {
   const div = document.createElement("div");
   div.className = "block-item";
-  div.style.cssText = "border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:8px;background:#fafafa;position:relative";
   div.innerHTML = `
-    <button type="button" class="block-del" style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:#999;font-size:16px">×</button>
+    <button type="button" class="block-del">×</button>
     <div class="form-grid" style="gap:8px">
       <div class="form-group"><label style="font-size:12px">公司</label><input class="work-company" placeholder="公司名称" value="${work.company || ""}"></div>
       <div class="form-group"><label style="font-size:12px">职位</label><input class="work-title" placeholder="职位名称" value="${work.title || ""}"></div>
@@ -364,7 +484,7 @@ async function uploadAndConfirm(file) {
   const body = document.getElementById("modal-body");
   const modalSaveBtn = document.getElementById("modal-save");
   body.innerHTML = '<span class="spinner"></span> 解析中...';
-  modalSaveBtn.style.display = "none"; // hide bottom save button in parse mode
+  modalSaveBtn.classList.add("hidden"); // hide bottom save button in parse mode
   overlay.classList.remove("hidden");
 
   let res;
@@ -478,7 +598,7 @@ async function uploadAndConfirm(file) {
   // Supplier dropdown: show/hide manual input
   const fSupplier = document.getElementById("f-supplier");
   const fSource = document.getElementById("f-source");
-  fSupplier.onchange = () => { fSource.style.display = fSupplier.value === "__other__" ? "" : "none"; };
+  fSupplier.onchange = () => { if (fSupplier.value === "__other__") fSource.classList.remove("hidden"); else fSource.classList.add("hidden"); };
 
   // Quick-add supplier
   document.getElementById("f-add-supplier-btn").onclick = async () => {
@@ -491,7 +611,7 @@ async function uploadAndConfirm(file) {
     opt.textContent = newS.name;
     fSupplier.insertBefore(opt, fSupplier.querySelector('option[value="__other__"]'));
     fSupplier.value = newS.id;
-    fSource.style.display = "none";
+    fSource.classList.add("hidden");
   };
 
   // 查重：更新已有档案
@@ -524,7 +644,7 @@ async function uploadAndConfirm(file) {
       if (workList.length) patch.work_experience = workList;
       await api.patch(`/api/candidates/${existingId}`, patch);
       overlay.classList.add("hidden");
-      modalSaveBtn.style.display = "";
+      modalSaveBtn.classList.remove("hidden");
       location.hash = `#/candidates/${existingId}`;
     };
   });
@@ -532,8 +652,8 @@ async function uploadAndConfirm(file) {
   const ignoreBtn = document.getElementById("dup-ignore-btn");
   if (ignoreBtn) ignoreBtn.onclick = () => document.getElementById("dup-banner")?.remove();
 
-  document.getElementById("modal-cancel").onclick = () => { modalSaveBtn.style.display = ""; overlay.classList.add("hidden"); };
-  document.getElementById("f-cancel-btn").onclick = () => { modalSaveBtn.style.display = ""; overlay.classList.add("hidden"); };
+  document.getElementById("modal-cancel").onclick = () => { modalSaveBtn.classList.remove("hidden"); overlay.classList.add("hidden"); };
+  document.getElementById("f-cancel-btn").onclick = () => { modalSaveBtn.classList.remove("hidden"); overlay.classList.add("hidden"); };
   const inlineSaveBtn = document.getElementById("f-save-btn");
   inlineSaveBtn.onclick = () => withLoading(inlineSaveBtn, async () => {
     const name = document.getElementById("f-name").value.trim();
@@ -573,7 +693,7 @@ async function uploadAndConfirm(file) {
     }
 
     overlay.classList.add("hidden");
-    modalSaveBtn.style.display = "";
+    modalSaveBtn.classList.remove("hidden");
     if (linkResult) {
       location.hash = `#/pipeline?expand=${linkResult.id}`;
     } else {
@@ -639,7 +759,7 @@ async function renderCandidateList(el) {
 // ── Candidate Profile ─────────────────────────────────────────────────────────
 function switchTab(tabId) {
   document.querySelectorAll(".profile-tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tabId));
-  document.querySelectorAll(".profile-tab-panel").forEach(p => p.style.display = p.dataset.tab === tabId ? "" : "none");
+  document.querySelectorAll(".profile-tab-panel").forEach(p => p.dataset.tab === tabId ? p.classList.remove("hidden") : p.classList.add("hidden"));
 }
 
 async function renderCandidateProfile(el, id) {
@@ -750,13 +870,9 @@ async function renderCandidateProfile(el, id) {
     btn.onclick = async () => {
       document.querySelectorAll(".profile-tab-btn").forEach(b => {
         b.classList.remove("active");
-        b.style.color = "#888";
-        b.style.borderBottomColor = "transparent";
       });
       btn.classList.add("active");
-      btn.style.color = "#1a1a2e";
-      btn.style.borderBottomColor = "#1a1a2e";
-      document.querySelectorAll(".profile-tab-panel").forEach(p => p.style.display = p.dataset.tab === btn.dataset.tab ? "" : "none");
+      document.querySelectorAll(".profile-tab-panel").forEach(p => p.dataset.tab === btn.dataset.tab ? p.classList.remove("hidden") : p.classList.add("hidden"));
 
       // 简历预览懒加载
       if (btn.dataset.tab === "preview" && !previewLoaded) {
@@ -841,7 +957,7 @@ async function renderCandidateProfile(el, id) {
     // Supplier dropdown logic
     const eSupplier = document.getElementById("e-supplier");
     const eSource = document.getElementById("e-source");
-    eSupplier.onchange = () => { eSource.style.display = eSupplier.value === "__other__" ? "" : "none"; };
+    eSupplier.onchange = () => { if (eSupplier.value === "__other__") eSource.classList.remove("hidden"); else eSource.classList.add("hidden"); };
     document.getElementById("e-add-supplier-btn").onclick = async () => {
       const sName = prompt("供应商名称：");
       if (!sName || !sName.trim()) return;
@@ -852,7 +968,7 @@ async function renderCandidateProfile(el, id) {
       opt.textContent = newS.name;
       eSupplier.insertBefore(opt, eSupplier.querySelector('option[value="__other__"]'));
       eSupplier.value = newS.id;
-      eSource.style.display = "none";
+      eSource.classList.add("hidden");
     };
 
     overlay.classList.remove("hidden");
@@ -998,8 +1114,8 @@ async function renderCandidateProfile(el, id) {
       toggle.onclick = () => {
         const body = document.getElementById("history-links-body");
         const arrow = document.getElementById("history-links-arrow");
-        const open = body.style.display === "none";
-        body.style.display = open ? "" : "none";
+        const open = body.classList.contains("hidden");
+        open ? body.classList.remove("hidden") : body.classList.add("hidden");
         arrow.textContent = open ? "▼" : "▶";
       };
     }
@@ -1008,8 +1124,8 @@ async function renderCandidateProfile(el, id) {
         const linkId = row.dataset.linkId;
         const detail = document.getElementById(`hist-iv-${linkId}`);
         const arrow = row.querySelector(".hist-arrow");
-        const open = detail.style.display === "none";
-        detail.style.display = open ? "" : "none";
+        const open = detail.classList.contains("hidden");
+        open ? detail.classList.remove("hidden") : detail.classList.add("hidden");
         arrow.textContent = open ? "▼" : "▶";
         if (open && !detail.dataset.loaded) {
           detail.dataset.loaded = "1";
@@ -1027,23 +1143,23 @@ async function renderCandidateProfile(el, id) {
 
   function openLinkJobOverlay() {
     api.get("/api/jobs").then(jobs => {
-      const overlay = document.getElementById("link-job-overlay");
-      const select = document.getElementById("link-job-select");
-      document.querySelector("#link-job-overlay h2").textContent = "新增投递";
-      select.innerHTML = jobs.map(j => `<option value="${j.id}">${j.title} @${String(j.id).padStart(3,"0")}</option>`).join("");
-      const keepBlock = document.getElementById("link-job-keep-records-block");
-      if (keepBlock) keepBlock.style.display = "none";
-      overlay.classList.remove("hidden");
-      document.getElementById("link-job-cancel").onclick = () => overlay.classList.add("hidden");
-      const confirmBtn = document.getElementById("link-job-confirm");
-      confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
-        const jobId = parseInt(select.value);
-        if (!jobId) return;
-        try {
-          await api.post("/api/pipeline/link", { candidate_id: parseInt(id), job_id: jobId });
-          overlay.classList.add("hidden");
-          renderCandidateProfile(el, id);
-        } catch (e) { /* toast shown */ }
+      const html = `
+        <div class="form-group">
+          <select id="dlg-link-job-select" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px">
+            ${jobs.map(j => `<option value="${j.id}">${j.title} @${String(j.id).padStart(3,"0")}</option>`).join("")}
+          </select>
+        </div>`;
+      openDialog("新增投递", html, {
+        confirmText: "确认关联",
+        onConfirm: async () => {
+          const jobId = parseInt(document.getElementById("dlg-link-job-select").value);
+          if (!jobId) return;
+          try {
+            await api.post("/api/pipeline/link", { candidate_id: parseInt(id), job_id: jobId });
+            closeDialog();
+            renderCandidateProfile(el, id);
+          } catch (e) { /* toast shown */ }
+        }
       });
     });
   }
@@ -1058,7 +1174,7 @@ async function renderCandidateProfile(el, id) {
 }
 
 // ── Activity chain helpers ────────────────────────────────────────────────────
-const CHAIN_TYPES = new Set(["resume_review", "interview", "offer"]);
+const CHAIN_TYPES = new Set(["resume_review", "interview", "offer", "onboard"]);
 
 function getCurrentTailActivity(activities) {
   const chain = activities.filter(a => CHAIN_TYPES.has(a.type));
@@ -1073,7 +1189,7 @@ function isTailComplete(tail) {
 // ── Activity card renderer ────────────────────────────────────────────────────
 function renderActivityCard(activity, editable) {
   const a = activity;
-  const typeLabel = { resume_review: "简历筛选", interview: "面试", phone_screen: "电话初筛", note: "备注", offer: "Offer", stage_change: "阶段变更" };
+  const typeLabel = { resume_review: "简历筛选", interview: "面试", phone_screen: "电话初筛", note: "备注", offer: "Offer", stage_change: "阶段变更", onboard: "入职确认" };
 
   if (a.type === "stage_change") {
     return `<div class="activity-stage-change">→ 推进到 <strong>${a.to_stage || a.stage}</strong></div>`;
@@ -1099,6 +1215,9 @@ function renderActivityCard(activity, editable) {
   if (a.type === "offer") {
     if (a.salary) metaParts.push(`薪资：${a.salary}`);
     if (a.start_date) metaParts.push(`入职：${a.start_date}`);
+  }
+  if (a.type === "onboard") {
+    if (a.start_date) metaParts.push(`入职日期：${a.start_date}`);
   }
   const meta = metaParts.join(" · ");
 
@@ -1238,6 +1357,26 @@ function getOfferFormData(container) {
   };
 }
 
+function renderOnboardFormHTML() {
+  return `
+    <div class="iv-form-row">
+      <div><label>入职日期</label><input class="ivf-start-date" type="date" value=""></div>
+    </div>
+    <label>备注（选填）</label>
+    <textarea class="ivf-comment" style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-height:50px;box-sizing:border-box;margin-bottom:8px"></textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn btn-secondary btn-sm ivf-cancel">取消</button>
+      <button type="button" class="btn btn-primary btn-sm ivf-save">确认入职</button>
+    </div>`;
+}
+
+function getOnboardFormData(container) {
+  return {
+    start_date: container.querySelector(".ivf-start-date")?.value || null,
+    comment: container.querySelector(".ivf-comment")?.value || null,
+  };
+}
+
 // ── Pipeline Tracking ─────────────────────────────────────────────────────────
 
 // shared inline iv form renderer (new or edit)
@@ -1263,29 +1402,6 @@ function renderIvFormHTML(record, round) {
 
   const presetReasons = ["技术/专业能力不达标","综合素质不匹配","经验年限不足","薪资期望差距过大","候选人主动放弃","地点/出行不接受","背调未通过","入职前反悔"];
   const isRejected = r.conclusion === "淘汰";
-  const isCustomReason = r.rejection_reason && !presetReasons.includes(r.rejection_reason);
-  const rejectionReasonBtns = `
-    <div style="font-size:11px;color:#888;margin:2px 0">能力维度</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-      ${["技术/专业能力不达标","综合素质不匹配","经验年限不足"].map(v => {
-        const isActive = r.rejection_reason === v;
-        return `<button type="button" class="ivf-reason-btn${isActive?" active":""}" data-v="${v}">${v}</button>`;
-      }).join("")}
-    </div>
-    <div style="font-size:11px;color:#888;margin:2px 0">意愿维度</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-      ${["薪资期望差距过大","候选人主动放弃","地点/出行不接受"].map(v => {
-        const isActive = r.rejection_reason === v;
-        return `<button type="button" class="ivf-reason-btn${isActive?" active":""}" data-v="${v}">${v}</button>`;
-      }).join("")}
-    </div>
-    <div style="font-size:11px;color:#888;margin:2px 0">流程维度</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-      ${["背调未通过","入职前反悔","其他"].map(v => {
-        const isActive = v === "其他" ? isCustomReason : r.rejection_reason === v;
-        return `<button type="button" class="ivf-reason-btn${isActive?" active":""}" data-v="${v}">${v}</button>`;
-      }).join("")}
-    </div>`;
   return `
     <div class="iv-form-row">
       <div><label>面试官</label><input class="ivf-actor" value="${r.actor||r.interviewer||""}" placeholder="面试官姓名"></div>
@@ -1299,11 +1415,8 @@ function renderIvFormHTML(record, round) {
     <label>结论</label>
     <div style="display:flex;gap:8px;margin:4px 0 10px">${conclusionBtns}</div>
     <input class="ivf-conclusion" type="hidden" value="${r.conclusion||""}">
-    <div class="ivf-rejection-reason-block" style="margin-bottom:10px;${isRejected?"":"display:none"}">
-      <label>淘汰原因</label>
-      ${rejectionReasonBtns}
-      <input class="ivf-rejection-reason" type="hidden" value="${r.rejection_reason||""}">
-      <input class="ivf-rejection-reason-other" type="text" placeholder="请填写原因" style="${isCustomReason ? "" : "display:none;"}padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box" value="${isCustomReason ? r.rejection_reason : ""}">
+    <div class="ivf-rejection-reason-block${isRejected ? "" : " hidden"}" style="margin-bottom:10px">
+      ${renderRejectionReasonForm("ivf", r.rejection_reason || "")}
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button type="button" class="btn btn-secondary btn-sm ivf-cancel">取消</button>
@@ -1340,7 +1453,7 @@ function bindIvFormInteractivity(container) {
       btn.classList.add("active");
       container.querySelector(".ivf-conclusion").value = btn.dataset.v;
       if (rejectionBlock) {
-        rejectionBlock.style.display = btn.dataset.v === "淘汰" ? "" : "none";
+        btn.dataset.v === "淘汰" ? rejectionBlock.classList.remove("hidden") : rejectionBlock.classList.add("hidden");
         if (btn.dataset.v !== "淘汰") {
           container.querySelector(".ivf-rejection-reason").value = "";
           container.querySelectorAll(".ivf-reason-btn").forEach(b => b.classList.remove("active"));
@@ -1348,23 +1461,9 @@ function bindIvFormInteractivity(container) {
       }
     });
   });
-  // rejection reason buttons
+  // rejection reason buttons (shared)
   if (rejectionBlock) {
-    container.querySelectorAll(".ivf-reason-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        container.querySelectorAll(".ivf-reason-btn").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-        container.querySelector(".ivf-rejection-reason").value = btn.dataset.v;
-        const otherInput = container.querySelector(".ivf-rejection-reason-other");
-        if (otherInput) otherInput.style.display = btn.dataset.v === "其他" ? "" : "none";
-      });
-    });
-    const otherInput = container.querySelector(".ivf-rejection-reason-other");
-    if (otherInput) {
-      otherInput.oninput = () => {
-        container.querySelector(".ivf-rejection-reason").value = otherInput.value;
-      };
-    }
+    bindRejectionReasonForm(rejectionBlock, "ivf");
   }
 }
 
@@ -1503,68 +1602,72 @@ function nextInterviewRound(records) {
 
 // ── Reject overlay ────────────────────────────────────────────────────────────
 function openRejectOverlay(linkId, candidateName, jobTitle, onSuccess) {
-  const overlay = document.getElementById("reject-overlay");
-  overlay.classList.remove("hidden");
-  document.getElementById("reject-reason-select").value = "";
-  document.getElementById("reject-cancel").onclick = () => overlay.classList.add("hidden");
-  const confirmBtn = document.getElementById("reject-confirm");
-  confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
-    const reason = document.getElementById("reject-reason-select").value;
-    if (!reason) { showToast("请选择淘汰原因", "error"); return; }
-    await api.patch(`/api/pipeline/link/${linkId}/outcome`, { outcome: "rejected", rejection_reason: reason });
-    overlay.classList.add("hidden");
-    showToast("已标记淘汰", "success");
-    if (onSuccess) onSuccess();
+  const html = `
+    <div class="form-group">
+      <select id="dlg-reject-reason" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px">
+        <option value="">-- 请选择原因 --</option>
+        <option value="能力不足">能力不足</option>
+        <option value="薪资不匹配">薪资不匹配</option>
+        <option value="主动放弃">主动放弃</option>
+        <option value="其他">其他</option>
+      </select>
+    </div>`;
+  openDialog("淘汰原因", html, {
+    confirmText: "确认淘汰",
+    confirmClass: "btn-danger",
+    onConfirm: async () => {
+      const reason = document.getElementById("dlg-reject-reason").value;
+      if (!reason) { showToast("请选择淘汰原因", "error"); return; }
+      await api.patch(`/api/pipeline/link/${linkId}/outcome`, { outcome: "rejected", rejection_reason: reason });
+      closeDialog();
+      showToast("已标记淘汰", "success");
+      if (onSuccess) onSuccess();
+    }
   });
 }
 
 // ── Withdraw overlay ──────────────────────────────────────────────────────────
 function openWithdrawOverlay(linkId, candidateName, jobTitle, onSuccess) {
-  const overlay = document.getElementById("withdraw-overlay");
-  document.getElementById("withdraw-info").textContent = `${candidateName} · ${jobTitle}`;
-  document.getElementById("withdraw-reason-value").value = "";
-  document.getElementById("withdraw-reason-note").value = "";
-  document.querySelectorAll("#withdraw-reason-btns .iv-reason-btn").forEach(b => b.classList.remove("active"));
-  overlay.classList.remove("hidden");
-
-  // bind reason buttons
-  document.querySelectorAll("#withdraw-reason-btns .iv-reason-btn").forEach(btn => {
-    btn.onclick = () => {
-      document.querySelectorAll("#withdraw-reason-btns .iv-reason-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      document.getElementById("withdraw-reason-value").value = btn.dataset.v;
-    };
-  });
-
-  document.getElementById("withdraw-cancel").onclick = () => overlay.classList.add("hidden");
-  const confirmBtn = document.getElementById("withdraw-confirm");
-  confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
-    const reason = document.getElementById("withdraw-reason-value").value;
-    if (!reason) { showToast("请选择退出原因", "error"); return; }
-    const note = document.getElementById("withdraw-reason-note").value.trim();
-    const fullReason = note ? `${reason}：${note}` : reason;
-    await api.patch(`/api/pipeline/link/${linkId}/withdraw`, { reason: fullReason });
-    overlay.classList.add("hidden");
-    showToast("已标记候选人退出", "success");
-    if (onSuccess) onSuccess();
+  const reasons = ["接受了其他Offer","薪资未达预期","岗位职责不符合预期","个人原因（家庭/健康等）","地点/出行问题","其他"];
+  const html = `
+    <p style="font-size:13px;color:var(--c-text-secondary);margin-bottom:12px">${candidateName} · ${jobTitle}</p>
+    <div class="form-group">
+      <label>退出原因 <span style="color:var(--c-reject)">*</span></label>
+      <div class="action-btn-group" style="flex-wrap:wrap;margin-top:8px" id="dlg-withdraw-btns">
+        ${reasons.map(r => `<button type="button" class="iv-reason-btn" data-v="${r}">${r}</button>`).join("")}
+      </div>
+      <input id="dlg-withdraw-reason" type="hidden">
+    </div>
+    <div class="form-group" style="margin-top:10px">
+      <label>补充说明（选填）</label>
+      <textarea id="dlg-withdraw-note" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px;min-height:60px;box-sizing:border-box;margin-top:6px" placeholder="可填写补充说明..."></textarea>
+    </div>`;
+  openDialog("候选人退出", html, {
+    confirmText: "确认退出",
+    confirmClass: "btn-danger",
+    onConfirm: async () => {
+      const reason = document.getElementById("dlg-withdraw-reason").value;
+      if (!reason) { showToast("请选择退出原因", "error"); return; }
+      const note = document.getElementById("dlg-withdraw-note").value.trim();
+      const fullReason = note ? `${reason}：${note}` : reason;
+      await api.patch(`/api/pipeline/link/${linkId}/withdraw`, { reason: fullReason });
+      closeDialog();
+      showToast("已标记候选人退出", "success");
+      if (onSuccess) onSuccess();
+    },
+    onOpen: () => {
+      document.querySelectorAll("#dlg-withdraw-btns .iv-reason-btn").forEach(btn => {
+        btn.onclick = () => {
+          document.querySelectorAll("#dlg-withdraw-btns .iv-reason-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          document.getElementById("dlg-withdraw-reason").value = btn.dataset.v;
+        };
+      });
+    }
   });
 }
 
 // ── Hire overlay ──────────────────────────────────────────────────────────────
-function openHireOverlay(linkId, candidateName, jobTitle, onSuccess) {
-  const overlay = document.getElementById("hire-overlay");
-  document.getElementById("hire-info").textContent = `确认 ${candidateName} 入职「${jobTitle}」？`;
-  overlay.classList.remove("hidden");
-  document.getElementById("hire-cancel").onclick = () => overlay.classList.add("hidden");
-  const confirmBtn = document.getElementById("hire-confirm");
-  confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
-    await api.patch(`/api/pipeline/link/${linkId}/hire`, {});
-    overlay.classList.add("hidden");
-    showToast("已确认入职", "success");
-    if (onSuccess) onSuccess();
-  });
-}
-
 async function renderPipelineTracking(el) {
   el.innerHTML = `
     <div class="page-header"><h1>进行中</h1></div>
@@ -1593,7 +1696,7 @@ async function renderPipelineTracking(el) {
       if (i > 0) html += `<div class="pt-dot-line done"></div>`;
       let dotClass = "pt-dot";
       let symbol = "";
-      const typeLabel = { resume_review: "简历筛选", interview: "面试", phone_screen: "电话初筛", offer: "Offer" };
+      const typeLabel = { resume_review: "简历筛选", interview: "面试", phone_screen: "电话初筛", offer: "Offer", onboard: "入职确认" };
       let title = r.round || typeLabel[r.type] || r.type;
       if (r.status === "cancelled") {
         dotClass += " cancelled"; symbol = "✗"; title += " (已取消)";
@@ -1647,14 +1750,20 @@ async function renderPipelineTracking(el) {
     const notesHTML = notes.map(a => renderActivityCard(a, true)).join("");
 
     inner.innerHTML = `
-      <div id="pt-history-${l.id}">${historyHTML}</div>
       <div id="pt-tail-${l.id}"></div>
       <div id="pt-next-${l.id}" style="margin-top:8px"></div>
+      ${history.length ? `
+      <div class="collapsible collapsed" style="margin-top:10px" id="pt-history-wrap-${l.id}">
+        <span class="collapsible-toggle" id="pt-history-toggle-${l.id}">▶ 查看历史记录(${history.length}条)</span>
+        <div class="collapsible-body" style="margin-top:6px">
+          <div id="pt-history-${l.id}">${historyHTML}</div>
+        </div>
+      </div>` : `<div id="pt-history-${l.id}"></div>`}
       <div id="pt-notes-${l.id}" style="margin-top:4px">${notesHTML}</div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <div class="action-btn-group" style="margin-top:10px">
         <button class="btn btn-secondary btn-sm pt-note-btn">+ 备注</button>
         <button type="button" class="btn btn-secondary btn-sm pt-transfer-btn">转移岗位</button>
-        <button type="button" class="btn btn-secondary btn-sm pt-withdraw-btn" style="color:#dc2626;border-color:#fca5a5">候选人退出</button>
+        <button type="button" class="btn btn-secondary btn-sm pt-withdraw-btn" style="color:var(--c-reject);border-color:#fca5a5">候选人退出</button>
       </div>`;
 
     const tailDiv = inner.querySelector(`#pt-tail-${l.id}`);
@@ -1680,17 +1789,15 @@ async function renderPipelineTracking(el) {
       }
 
       if (tail.type === "resume_review" && !tailComplete) {
-        // pending resume_review: show actor input + pass/reject buttons
+        // pending resume_review: inline form — 筛选人[___] [✓通过] [✗淘汰]
         tailDiv.innerHTML = `
           <div class="iv-card activity-card" data-activity-id="${tail.id}">
             <div class="iv-card-header"><span class="iv-card-round">简历筛选</span></div>
-            <div style="margin-top:8px">
-              <label style="font-size:12px;color:#555">筛选人</label>
-              <input class="rr-actor-input" placeholder="筛选人姓名" value="${tail.actor||""}" style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;margin-bottom:8px;box-sizing:border-box">
-            </div>
-            <div style="display:flex;gap:8px">
-              <button class="btn btn-primary btn-sm rr-pass-btn">通过</button>
-              <button class="btn btn-secondary btn-sm rr-reject-btn" style="color:#dc2626;border-color:#fca5a5">淘汰</button>
+            <div class="form-inline" style="margin-top:8px">
+              <label style="font-size:12px;color:var(--c-text-secondary);white-space:nowrap">筛选人</label>
+              <input class="rr-actor-input" placeholder="姓名" value="${tail.actor||""}" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:120px;box-sizing:border-box">
+              <button class="btn btn-primary btn-sm rr-pass-btn">✓ 通过</button>
+              <button class="btn btn-sm rr-reject-btn" style="color:var(--c-reject);border:1px solid #fca5a5;background:var(--bg-reject)">✗ 淘汰</button>
             </div>
           </div>`;
         tailDiv.querySelector(".rr-pass-btn").onclick = async () => {
@@ -1716,7 +1823,7 @@ async function renderPipelineTracking(el) {
         // scheduled interview: show complete/cancel buttons
         tailDiv.innerHTML = renderActivityCard(tail, false);
         const actionDiv = document.createElement("div");
-        actionDiv.style.cssText = "display:flex;gap:6px;margin-top:8px";
+        actionDiv.className = "action-btn-group";
         actionDiv.innerHTML = `
           <button class="btn btn-primary btn-sm iv-complete-btn">填写面评</button>
           <button class="btn btn-secondary btn-sm iv-cancel-btn">取消面试</button>`;
@@ -1816,20 +1923,24 @@ async function renderPipelineTracking(el) {
     function renderNextStep() {
       if (!tailComplete || !tail) return;
 
-      // Offer已接受但未入职：显示"确认入职"按钮
+      // Offer已接受但未入职：显示 onboard 表单
       if (tail.type === "offer" && tail.conclusion === "接受") {
         nextDiv.innerHTML = `
           <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px">
             <div style="font-size:13px;color:#166534;margin-bottom:8px">Offer 已接受，请确认入职：</div>
-            <button class="btn btn-primary btn-sm" id="pt-confirm-hire-${l.id}">确认入职</button>
+            <div id="pt-onboard-form-${l.id}">${renderOnboardFormHTML()}</div>
           </div>`;
-        nextDiv.querySelector(`#pt-confirm-hire-${l.id}`).onclick = () => {
-          openHireOverlay(l.id, l.candidate_name, l.job_title, () => {
-            const idx = links.findIndex(lk => lk.id === l.id);
-            if (idx !== -1) links.splice(idx, 1);
-            renderContent();
-          });
-        };
+        const formDiv = nextDiv.querySelector(`#pt-onboard-form-${l.id}`);
+        formDiv.querySelector(".ivf-save").onclick = () => withLoading(formDiv.querySelector(".ivf-save"), async () => {
+          const data = getOnboardFormData(formDiv);
+          if (!data.start_date) { showToast("请填写入职日期", "error"); return; }
+          await api.post("/api/activities", { link_id: l.id, type: "onboard", ...data });
+          showToast("已确认入职", "success");
+          const idx = links.findIndex(lk => lk.id === l.id);
+          if (idx !== -1) links.splice(idx, 1);
+          renderContent();
+        });
+        formDiv.querySelector(".ivf-cancel").onclick = () => { nextDiv.innerHTML = ""; };
         return;
       }
 
@@ -1903,12 +2014,12 @@ async function renderPipelineTracking(el) {
           const data = getOfferFormData(formDiv);
           if (!data.conclusion) { showToast("请选择结论", "error"); return; }
           await api.post("/api/activities", { link_id: l.id, type: "offer", ...data });
-          if (data.conclusion === "接受") {
-            openHireOverlay(l.id, l.candidate_name, l.job_title, () => {
-              const idx = links.findIndex(lk => lk.id === l.id);
-              if (idx !== -1) links.splice(idx, 1);
-              renderContent();
-            });
+          if (data.conclusion === "拒绝") {
+            await api.patch(`/api/pipeline/link/${l.id}/outcome`, { outcome: "rejected", rejection_reason: "候选人拒绝Offer" });
+            showToast("Offer 已拒绝，候选人已淘汰", "success");
+            const idx = links.findIndex(lk => lk.id === l.id);
+            if (idx !== -1) links.splice(idx, 1);
+            renderContent();
             return;
           }
           showToast("Offer 已保存", "success");
@@ -1920,6 +2031,17 @@ async function renderPipelineTracking(el) {
 
     renderTail();
     renderNextStep();
+
+    // bind history toggle
+    const histToggle = inner.querySelector(`#pt-history-toggle-${l.id}`);
+    if (histToggle) {
+      histToggle.onclick = () => {
+        const wrap = inner.querySelector(`#pt-history-wrap-${l.id}`);
+        const collapsed = wrap.classList.contains("collapsed");
+        wrap.classList.toggle("collapsed");
+        histToggle.textContent = collapsed ? `▼ 收起历史记录` : `▶ 查看历史记录(${history.length}条)`;
+      };
+    }
 
     // bind note edit buttons in notes section
     inner.querySelectorAll(`#pt-notes-${l.id} .activity-edit-btn`).forEach(btn => {
@@ -1943,7 +2065,7 @@ async function renderPipelineTracking(el) {
     // note button — always visible
     inner.querySelector(".pt-note-btn").onclick = () => {
       const noteFormDiv = document.createElement("div");
-      noteFormDiv.style.cssText = "margin-top:8px";
+      noteFormDiv.className = "note-form-inline";
       noteFormDiv.innerHTML = renderNoteFormHTML();
       inner.querySelector(`#pt-notes-${l.id}`).prepend(noteFormDiv);
       noteFormDiv.querySelector(".ivf-save").onclick = async () => {
@@ -1966,28 +2088,34 @@ async function renderPipelineTracking(el) {
     // transfer button
     inner.querySelector(".pt-transfer-btn").onclick = async () => {
       const jobs = await api.get("/api/jobs");
-      const overlay = document.getElementById("link-job-overlay");
-      const select = document.getElementById("link-job-select");
-      document.querySelector("#link-job-overlay h2").textContent = "转移岗位";
-      select.innerHTML = jobs.filter(j => j.id !== l.job_id).map(j => `<option value="${j.id}">${j.title} @${String(j.id).padStart(3,"0")}</option>`).join("");
-      const keepBlock = document.getElementById("link-job-keep-records-block");
-      if (keepBlock) keepBlock.style.display = "";
-      document.querySelector('input[name="keep-records"][value="fresh"]').checked = true;
-      overlay.classList.remove("hidden");
-      document.getElementById("link-job-cancel").onclick = () => { overlay.classList.add("hidden"); if (keepBlock) keepBlock.style.display = "none"; };
-      const confirmBtn = document.getElementById("link-job-confirm");
-      confirmBtn.onclick = () => withLoading(confirmBtn, async () => {
-        const newJobId = parseInt(select.value);
-        if (!newJobId) return;
-        const keepRecords = document.querySelector('input[name="keep-records"]:checked')?.value === "keep";
-        overlay.classList.add("hidden");
-        if (keepBlock) keepBlock.style.display = "none";
-        await api.patch(`/api/pipeline/link/${l.id}/transfer`, { new_job_id: newJobId, keep_records: keepRecords });
-        showToast("已转移岗位", "success");
-        const freshLinks = await api.get("/api/pipeline/active");
-        links.length = 0;
-        links.push(...freshLinks);
-        renderContent();
+      const filtered = jobs.filter(j => j.id !== l.job_id);
+      const html = `
+        <div class="form-group">
+          <select id="dlg-link-job-select" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px">
+            ${filtered.map(j => `<option value="${j.id}">${j.title} @${String(j.id).padStart(3,"0")}</option>`).join("")}
+          </select>
+        </div>
+        <div class="form-group" style="margin-top:10px">
+          <label style="font-size:13px;color:var(--c-text-secondary)">是否保留面试记录？</label>
+          <div style="display:flex;gap:16px;margin-top:6px">
+            <label style="font-size:13px;cursor:pointer"><input type="radio" name="dlg-keep-records" value="keep" style="margin-right:4px">保留</label>
+            <label style="font-size:13px;cursor:pointer"><input type="radio" name="dlg-keep-records" value="fresh" checked style="margin-right:4px">从头开始</label>
+          </div>
+        </div>`;
+      openDialog("转移岗位", html, {
+        confirmText: "确认关联",
+        onConfirm: async () => {
+          const newJobId = parseInt(document.getElementById("dlg-link-job-select").value);
+          if (!newJobId) return;
+          const keepRecords = document.querySelector('input[name="dlg-keep-records"]:checked')?.value === "keep";
+          closeDialog();
+          await api.patch(`/api/pipeline/link/${l.id}/transfer`, { new_job_id: newJobId, keep_records: keepRecords });
+          showToast("已转移岗位", "success");
+          const freshLinks = await api.get("/api/pipeline/active");
+          links.length = 0;
+          links.push(...freshLinks);
+          renderContent();
+        }
       });
     };
   }
@@ -2036,12 +2164,13 @@ async function renderPipelineTracking(el) {
         if (existingExpand) {
           existingExpand.remove();
           arrow.textContent = "▶";
-          arrow.style.color = "#aaa";
+          arrow.classList.remove("pt-progress-arrow", "active");
+          arrow.classList.add("pt-progress-arrow");
         } else {
           const l = links.find(lk => lk.id === linkId);
           if (!l) return;
           arrow.textContent = "▼";
-          arrow.style.color = "#4f46e5";
+          arrow.classList.add("pt-progress-arrow", "active");
           await expandRow(tr, l);
         }
       };
@@ -2075,16 +2204,14 @@ async function renderPipelineTracking(el) {
 
   document.getElementById("pt-group-job").onclick = () => {
     groupMode = "job";
-    document.getElementById("pt-group-job").className = "btn btn-primary btn-sm";
-    document.getElementById("pt-group-stage").className = "btn btn-secondary btn-sm";
-    document.getElementById("pt-group-stage").style.cssText = "border-radius:6px;background:transparent;border:none";
+    document.getElementById("pt-group-job").className = "btn btn-primary btn-sm pt-group-btn active";
+    document.getElementById("pt-group-stage").className = "btn btn-secondary btn-sm pt-group-btn";
     renderContent();
   };
   document.getElementById("pt-group-stage").onclick = () => {
     groupMode = "stage";
-    document.getElementById("pt-group-stage").className = "btn btn-primary btn-sm";
-    document.getElementById("pt-group-job").className = "btn btn-secondary btn-sm";
-    document.getElementById("pt-group-job").style.cssText = "border-radius:6px;background:transparent;border:none";
+    document.getElementById("pt-group-stage").className = "btn btn-primary btn-sm pt-group-btn active";
+    document.getElementById("pt-group-job").className = "btn btn-secondary btn-sm pt-group-btn";
     renderContent();
   };
 
@@ -2190,7 +2317,7 @@ async function renderTalentPool(el) {
           <td>
             <div style="display:flex;gap:6px">
               <a href="#/candidates/${c.id}" class="btn btn-secondary btn-sm">详情</a>
-              <button class="btn btn-primary btn-sm tp-recommend-btn" data-id="${c.id}">推荐到岗位</button>
+              ${hiredLink ? '' : `<button class="btn btn-primary btn-sm tp-recommend-btn" data-id="${c.id}">推荐到岗位</button>`}
             </div>
           </td>
         </tr>`;
@@ -2205,7 +2332,7 @@ async function renderTalentPool(el) {
         await api.patch(`/api/candidates/${id}`, { starred: newStarred });
         btn.dataset.starred = newStarred ? "1" : "0";
         btn.textContent = newStarred ? "★" : "☆";
-        btn.style.color = newStarred ? "#f59e0b" : "#ccc";
+        newStarred ? btn.classList.add("starred") : btn.classList.remove("starred");
         if (starredOnly && !newStarred) btn.closest("tr").remove();
       };
     });
@@ -2214,21 +2341,22 @@ async function renderTalentPool(el) {
     tableEl.querySelectorAll(".tp-recommend-btn").forEach(btn => {
       btn.onclick = async () => {
         const jobs = await api.get("/api/jobs");
-        const overlay = document.getElementById("link-job-overlay");
-        const select = document.getElementById("link-job-select");
-        select.innerHTML = jobs.map(j => `<option value="${j.id}">${j.title}</option>`).join("");
-        const keepBlock = document.getElementById("link-job-keep-records-block");
-        if (keepBlock) keepBlock.style.display = "none";
-        overlay.classList.remove("hidden");
-        document.getElementById("link-job-cancel").onclick = () => overlay.classList.add("hidden");
-        const tpLinkConfirmBtn = document.getElementById("link-job-confirm");
-        tpLinkConfirmBtn.onclick = () => withLoading(tpLinkConfirmBtn, async () => {
-          const jobId = parseInt(select.value);
-          try {
-            await api.post("/api/pipeline/link", { candidate_id: parseInt(btn.dataset.id), job_id: jobId });
-            overlay.classList.add("hidden");
-            location.hash = `#/pipeline`;
-          } catch (e) { /* toast already shown by api helper */ }
+        const html = `
+          <div class="form-group">
+            <select id="dlg-link-job-select" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px">
+              ${jobs.map(j => `<option value="${j.id}">${j.title}</option>`).join("")}
+            </select>
+          </div>`;
+        openDialog("推荐到岗位", html, {
+          confirmText: "确认关联",
+          onConfirm: async () => {
+            const jobId = parseInt(document.getElementById("dlg-link-job-select").value);
+            try {
+              await api.post("/api/pipeline/link", { candidate_id: parseInt(btn.dataset.id), job_id: jobId });
+              closeDialog();
+              location.hash = `#/pipeline`;
+            } catch (e) { /* toast already shown by api helper */ }
+          }
         });
       };
     });
@@ -2476,31 +2604,28 @@ async function renderJobList(el) {
           await api.patch(`/api/jobs/${jobId}`, { status: "closed" });
           loadJobs();
         } else {
-          // 自定义弹窗
-          const overlay = document.createElement("div");
-          overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center";
-          overlay.innerHTML = `
-            <div style="background:#fff;border-radius:12px;padding:28px;max-width:400px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.18)">
-              <h3 style="margin:0 0 12px;font-size:16px">关闭岗位</h3>
-              <p style="margin:0 0 20px;color:#555;font-size:14px">该岗位还有 <strong>${activeCount}</strong> 名候选人在流程中，请选择处理方式：</p>
-              <div style="display:flex;flex-direction:column;gap:8px">
-                <button id="bulk-reject-btn" class="btn btn-danger" style="width:100%">批量淘汰并关闭（此操作不可撤销）</button>
-                <button id="close-only-btn" class="btn btn-secondary" style="width:100%">仅关闭岗位（保留流程记录）</button>
-                <button id="cancel-close-btn" class="btn btn-secondary" style="width:100%;color:#888">取消</button>
-              </div>
+          const html = `
+            <p style="color:var(--c-text-secondary);font-size:14px;margin-bottom:16px">该岗位还有 <strong>${activeCount}</strong> 名候选人在流程中，请选择处理方式：</p>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <button id="dlg-bulk-reject-btn" class="btn btn-danger" style="width:100%">批量淘汰并关闭（此操作不可撤销）</button>
+              <button id="dlg-close-only-btn" class="btn btn-secondary" style="width:100%">仅关闭岗位（保留流程记录）</button>
+              <button id="dlg-cancel-close-btn" class="btn btn-secondary" style="width:100%;color:var(--c-text-muted)">取消</button>
             </div>`;
-          document.body.appendChild(overlay);
-          overlay.querySelector("#bulk-reject-btn").onclick = async () => {
-            document.body.removeChild(overlay);
-            await api.patch(`/api/jobs/${jobId}`, { status: "closed", bulk_reject: true });
-            loadJobs();
-          };
-          overlay.querySelector("#close-only-btn").onclick = async () => {
-            document.body.removeChild(overlay);
-            await api.patch(`/api/jobs/${jobId}`, { status: "closed" });
-            loadJobs();
-          };
-          overlay.querySelector("#cancel-close-btn").onclick = () => document.body.removeChild(overlay);
+          openDialog("关闭岗位", html, {
+            onOpen: () => {
+              document.getElementById("dlg-bulk-reject-btn").onclick = async () => {
+                closeDialog();
+                await api.patch(`/api/jobs/${jobId}`, { status: "closed", bulk_reject: true });
+                loadJobs();
+              };
+              document.getElementById("dlg-close-only-btn").onclick = async () => {
+                closeDialog();
+                await api.patch(`/api/jobs/${jobId}`, { status: "closed" });
+                loadJobs();
+              };
+              document.getElementById("dlg-cancel-close-btn").onclick = closeDialog;
+            }
+          });
         }
       };
     });
@@ -2662,15 +2787,9 @@ async function renderJobDetail(el, jobId) {
     btn.onclick = async () => {
       el.querySelectorAll(".jd-tab-btn").forEach(b => {
         b.classList.remove("active");
-        b.style.color = "#888";
-        b.style.borderBottomColor = "transparent";
-        b.style.fontWeight = "400";
       });
       btn.classList.add("active");
-      btn.style.color = "#1a1a2e";
-      btn.style.borderBottomColor = "#1a1a2e";
-      btn.style.fontWeight = "600";
-      el.querySelectorAll(".jd-tab-panel").forEach(p => p.style.display = p.dataset.tab === btn.dataset.tab ? "" : "none");
+      el.querySelectorAll(".jd-tab-panel").forEach(p => p.dataset.tab === btn.dataset.tab ? p.classList.remove("hidden") : p.classList.add("hidden"));
 
       if (btn.dataset.tab === "progress") {
         const progressEl = document.getElementById("jd-progress-content");

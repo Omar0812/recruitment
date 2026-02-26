@@ -13,6 +13,7 @@
       <nav>
         <a href="#/" class="nav-item" data-page="dashboard">首页</a>
         <a href="#/pipeline" class="nav-item" data-page="pipeline">进行中</a>
+        <a href="#/hired" class="nav-item" data-page="hired">已入职</a>
         <a href="#/talent" class="nav-item" data-page="talent">人才库</a>
         <a href="#/jobs" class="nav-item" data-page="jobs">岗位库</a>
         <a href="#/analytics" class="nav-item" data-page="analytics">数据分析</a>
@@ -40,177 +41,6 @@
     </div>
   </div>
 
-  <!-- 看板备注弹窗 -->
-  <div id="note-overlay" class="modal-overlay hidden">
-    <div class="modal" style="max-width:360px">
-      <h2>添加备注</h2>
-      <div class="form-group" style="margin-top:12px">
-        <textarea id="note-input" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px;min-height:80px;box-sizing:border-box"></textarea>
-      </div>
-      <div class="modal-actions">
-        <button id="note-cancel" class="btn btn-secondary">取消</button>
-        <button id="note-confirm" class="btn btn-primary">保存</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 关联岗位弹窗 -->
-  <div id="link-job-overlay" class="modal-overlay hidden">
-    <div class="modal" style="max-width:360px">
-      <h2>关联岗位</h2>
-      <div class="form-group" style="margin-top:12px">
-        <select id="link-job-select" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px"></select>
-      </div>
-      <div id="link-job-keep-records-block" class="form-group" style="margin-top:10px;display:none">
-        <label style="font-size:13px;color:#555">是否保留面试记录？</label>
-        <div style="display:flex;gap:16px;margin-top:6px">
-          <label style="font-size:13px;cursor:pointer"><input type="radio" name="keep-records" value="keep" style="margin-right:4px">保留</label>
-          <label style="font-size:13px;cursor:pointer"><input type="radio" name="keep-records" value="fresh" checked style="margin-right:4px">从头开始</label>
-        </div>
-      </div>
-      <div class="modal-actions">
-        <button id="link-job-cancel" class="btn btn-secondary">取消</button>
-        <button id="link-job-confirm" class="btn btn-primary">确认关联</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 面试记录弹窗（看板用） -->
-  <div id="interview-overlay" class="modal-overlay hidden">
-    <div class="modal" style="max-width:400px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <h2 style="margin:0">填写面评</h2>
-        <span id="iv-round-label" style="font-size:13px;color:#4f46e5;font-weight:600;background:#e0e7ff;padding:3px 10px;border-radius:12px"></span>
-      </div>
-      <input id="iv-round" type="hidden">
-      <div class="form-grid" style="margin-top:4px">
-        <div class="form-group">
-          <label>面试官</label>
-          <input id="iv-interviewer" placeholder="面试官姓名">
-        </div>
-        <div class="form-group">
-          <label>面试时间</label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input id="iv-time-date" type="date" style="flex:1;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px">
-            <select id="iv-time-slot" style="flex:1;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;background:#fff"></select>
-          </div>
-        </div>
-        <div class="form-group form-full">
-          <label>评分</label>
-          <div id="iv-score-stars" style="display:flex;gap:4px;margin-top:6px">
-            <span class="iv-star" data-v="1">★</span>
-            <span class="iv-star" data-v="2">★</span>
-            <span class="iv-star" data-v="3">★</span>
-            <span class="iv-star" data-v="4">★</span>
-            <span class="iv-star" data-v="5">★</span>
-            <span id="iv-score-clear" style="font-size:12px;color:#bbb;cursor:pointer;align-self:center;margin-left:6px">清除</span>
-          </div>
-          <input id="iv-score" type="hidden">
-        </div>
-        <div class="form-group form-full">
-          <label>评语</label>
-          <textarea id="iv-comment" style="min-height:60px"></textarea>
-        </div>
-        <div class="form-group form-full">
-          <label>结论</label>
-          <div style="display:flex;gap:8px;margin-top:6px">
-            <button type="button" class="iv-conclusion-btn" data-v="">待定</button>
-            <button type="button" class="iv-conclusion-btn" data-v="通过">通过</button>
-            <button type="button" class="iv-conclusion-btn iv-conclusion-reject" data-v="淘汰">淘汰</button>
-          </div>
-          <input id="iv-conclusion" type="hidden">
-        </div>
-        <div class="form-group form-full" id="iv-rejection-reason-block" style="display:none">
-          <label>淘汰原因</label>
-          <div style="font-size:11px;color:#888;margin:4px 0 2px">能力维度</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px" id="iv-rejection-reason-btns">
-            <button type="button" class="iv-reason-btn" data-v="技术/专业能力不达标">技术/专业能力不达标</button>
-            <button type="button" class="iv-reason-btn" data-v="综合素质不匹配">综合素质不匹配</button>
-            <button type="button" class="iv-reason-btn" data-v="经验年限不足">经验年限不足</button>
-          </div>
-          <div style="font-size:11px;color:#888;margin:4px 0 2px">意愿维度</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-            <button type="button" class="iv-reason-btn" data-v="薪资期望差距过大">薪资期望差距过大</button>
-            <button type="button" class="iv-reason-btn" data-v="候选人主动放弃">候选人主动放弃</button>
-            <button type="button" class="iv-reason-btn" data-v="地点/出行不接受">地点/出行不接受</button>
-          </div>
-          <div style="font-size:11px;color:#888;margin:4px 0 2px">流程维度</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-            <button type="button" class="iv-reason-btn" data-v="背调未通过">背调未通过</button>
-            <button type="button" class="iv-reason-btn" data-v="入职前反悔">入职前反悔</button>
-            <button type="button" class="iv-reason-btn" data-v="其他">其他</button>
-          </div>
-          <input id="iv-rejection-reason" type="hidden">
-          <input id="iv-rejection-reason-other" type="text" placeholder="请填写原因" style="display:none;margin-top:8px;width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">
-        </div>
-      </div>
-      <div class="modal-actions">
-        <button id="iv-cancel" class="btn btn-secondary">取消</button>
-        <button id="iv-confirm" class="btn btn-primary">保存</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 淘汰原因弹窗 -->
-  <div id="reject-overlay" class="modal-overlay hidden">
-    <div class="modal" style="max-width:360px">
-      <h2>淘汰原因</h2>
-      <div class="form-group" style="margin-top:12px">
-        <select id="reject-reason-select" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px">
-          <option value="">-- 请选择原因 --</option>
-          <option value="能力不足">能力不足</option>
-          <option value="薪资不匹配">薪资不匹配</option>
-          <option value="主动放弃">主动放弃</option>
-          <option value="其他">其他</option>
-        </select>
-      </div>
-      <div class="modal-actions">
-        <button id="reject-cancel" class="btn btn-secondary">取消</button>
-        <button id="reject-confirm" class="btn btn-danger">确认淘汰</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 候选人退出弹窗 -->
-  <div id="withdraw-overlay" class="modal-overlay hidden">
-    <div class="modal" style="max-width:400px">
-      <h2>候选人退出</h2>
-      <p id="withdraw-info" style="font-size:13px;color:#555;margin:8px 0 12px"></p>
-      <div class="form-group">
-        <label>退出原因 <span style="color:#dc2626">*</span></label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px" id="withdraw-reason-btns">
-          <button type="button" class="iv-reason-btn" data-v="接受了其他Offer">接受了其他Offer</button>
-          <button type="button" class="iv-reason-btn" data-v="薪资未达预期">薪资未达预期</button>
-          <button type="button" class="iv-reason-btn" data-v="岗位职责不符合预期">岗位职责不符合预期</button>
-          <button type="button" class="iv-reason-btn" data-v="个人原因（家庭/健康等）">个人原因（家庭/健康等）</button>
-          <button type="button" class="iv-reason-btn" data-v="地点/出行问题">地点/出行问题</button>
-          <button type="button" class="iv-reason-btn" data-v="其他">其他</button>
-        </div>
-        <input id="withdraw-reason-value" type="hidden">
-      </div>
-      <div class="form-group" style="margin-top:10px">
-        <label>补充说明（选填）</label>
-        <textarea id="withdraw-reason-note" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px;min-height:60px;box-sizing:border-box;margin-top:6px" placeholder="可填写补充说明..."></textarea>
-      </div>
-      <div class="modal-actions">
-        <button id="withdraw-cancel" class="btn btn-secondary">取消</button>
-        <button id="withdraw-confirm" class="btn btn-danger">确认退出</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 确认入职弹窗 -->
-  <div id="hire-overlay" class="modal-overlay hidden">
-    <div class="modal" style="max-width:360px">
-      <h2>确认入职</h2>
-      <p id="hire-info" style="font-size:13px;color:#555;margin:8px 0 16px"></p>
-      <div class="modal-actions">
-        <button id="hire-cancel" class="btn btn-secondary">取消</button>
-        <button id="hire-confirm" class="btn btn-primary">确认入职</button>
-      </div>
-    </div>
-  </div>
-
   <div id="dedup-overlay" class="modal-overlay hidden" style="align-items:flex-start;padding:24px;overflow-y:auto">
     <div class="modal" style="max-width:800px;width:100%;max-height:90vh;overflow-y:auto">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
@@ -218,6 +48,18 @@
         <button id="dedup-close" class="btn btn-secondary" style="padding:4px 12px">×</button>
       </div>
       <div id="dedup-content"><span class="spinner"></span></div>
+    </div>
+  </div>
+
+  <!-- 通用弹窗容器 -->
+  <div id="dialog-overlay" class="dialog-overlay hidden">
+    <div class="dialog">
+      <div class="dialog-header">
+        <h3 id="dialog-title"></h3>
+        <button class="dialog-close" id="dialog-close-btn">&times;</button>
+      </div>
+      <div class="dialog-body" id="dialog-body"></div>
+      <div class="dialog-footer" id="dialog-footer"></div>
     </div>
   </div>
 

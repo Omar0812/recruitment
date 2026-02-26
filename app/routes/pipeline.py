@@ -243,6 +243,32 @@ def get_active_pipeline(db: Session = Depends(get_db)):
     return result
 
 
+@router.get("/hired")
+def get_hired_pipeline(db: Session = Depends(get_db)):
+    links = db.query(CandidateJobLink).join(Candidate).filter(
+        CandidateJobLink.outcome == "hired",
+        Candidate.deleted_at.is_(None)
+    ).all()
+    result = []
+    for lnk in links:
+        # 从 onboard 活动获取 start_date
+        onboard = db.query(ActivityRecord).filter(
+            ActivityRecord.link_id == lnk.id,
+            ActivityRecord.type == "onboard",
+        ).first()
+        result.append({
+            "id": lnk.id,
+            "candidate_id": lnk.candidate_id,
+            "candidate_name": lnk.candidate.name if lnk.candidate else None,
+            "job_id": lnk.job_id,
+            "job_title": lnk.job.title if lnk.job else None,
+            "start_date": onboard.start_date if onboard else None,
+            "hired_at": lnk.updated_at.isoformat() if lnk.updated_at else None,
+            "source": lnk.candidate.source if lnk.candidate else None,
+        })
+    return result
+
+
 @router.get("/jobs/{job_id}/pipeline")
 def get_pipeline(job_id: int, db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id).first()
