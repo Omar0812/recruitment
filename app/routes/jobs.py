@@ -2,15 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime
 
 from app.database import get_db
 from app.models import Job, CandidateJobLink, HistoryEntry
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
-
-DEFAULT_STAGES = ["简历筛选", "电话初筛", "面试", "Offer", "已入职"]
 
 
 class JobCreate(BaseModel):
@@ -20,12 +18,10 @@ class JobCreate(BaseModel):
     persona: Optional[str] = None
     status: Optional[str] = "open"
     hr_owner: Optional[str] = None
-    stages: Optional[List[str]] = None
     city: Optional[str] = None
     job_category: Optional[str] = None
     employment_type: Optional[str] = None
     priority: Optional[str] = None
-    interview_rounds: Optional[int] = None
 
 
 class JobUpdate(BaseModel):
@@ -35,13 +31,11 @@ class JobUpdate(BaseModel):
     persona: Optional[str] = None
     status: Optional[str] = None
     hr_owner: Optional[str] = None
-    stages: Optional[List[str]] = None
     city: Optional[str] = None
     job_category: Optional[str] = None
     employment_type: Optional[str] = None
     priority: Optional[str] = None
     bulk_reject: Optional[bool] = False
-    interview_rounds: Optional[int] = None
 
 
 def job_to_dict(job: Job, active_count: int = 0, last_activity: Optional[datetime] = None, stage_counts: Optional[dict] = None) -> dict:
@@ -57,8 +51,6 @@ def job_to_dict(job: Job, active_count: int = 0, last_activity: Optional[datetim
         "persona": job.persona,
         "status": job.status,
         "hr_owner": job.hr_owner,
-        "stages": job.stages or DEFAULT_STAGES,
-        "interview_rounds": job.interview_rounds or 1,
         "active_count": active_count,
         "stage_counts": stage_counts or {},
         "last_activity": last_activity.isoformat() if last_activity else None,
@@ -75,12 +67,10 @@ def create_job(data: JobCreate, db: Session = Depends(get_db)):
         persona=data.persona,
         status=data.status or "open",
         hr_owner=data.hr_owner,
-        stages=data.stages or DEFAULT_STAGES,
         city=data.city,
         job_category=data.job_category,
         employment_type=data.employment_type,
         priority=data.priority,
-        interview_rounds=data.interview_rounds or 1,
     )
     db.add(job)
     db.commit()

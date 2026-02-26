@@ -9,7 +9,9 @@ from app.models import ActivityRecord, CandidateJobLink
 
 router = APIRouter(prefix="/api/activities", tags=["activities"])
 
-CHAIN_TYPES = {"resume_review", "interview", "phone_screen", "offer"}
+CHAIN_TYPES = {"resume_review", "interview", "offer"}
+# phone_screen is retired but kept in STAGE_LABEL for historical data display
+_RETIRED_CHAIN_TYPES = {"phone_screen"}
 
 STAGE_LABEL = {
     "resume_review": "简历筛选",
@@ -20,11 +22,12 @@ STAGE_LABEL = {
 
 def derive_stage(link_id: int, db: Session) -> str:
     """从活动链尾推导 stage 标签。"""
+    all_chain_types = CHAIN_TYPES | _RETIRED_CHAIN_TYPES
     last = (
         db.query(ActivityRecord)
         .filter(
             ActivityRecord.link_id == link_id,
-            ActivityRecord.type.in_(CHAIN_TYPES),
+            ActivityRecord.type.in_(all_chain_types),
         )
         .order_by(ActivityRecord.id.desc())
         .first()
@@ -118,13 +121,18 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
     if data.score is not None and not (1 <= data.score <= 5):
         raise HTTPException(status_code=400, detail="评分须在 1-5 之间")
 
+    # phone_screen is retired — reject new creation
+    if data.type == "phone_screen":
+        raise HTTPException(status_code=400, detail="phone_screen 类型已废弃，请使用 interview")
+
     # 链尾约束：note 类型跳过校验
+    all_chain_types = CHAIN_TYPES | _RETIRED_CHAIN_TYPES
     if data.type in CHAIN_TYPES:
         tail = (
             db.query(ActivityRecord)
             .filter(
                 ActivityRecord.link_id == data.link_id,
-                ActivityRecord.type.in_(CHAIN_TYPES),
+                ActivityRecord.type.in_(all_chain_types),
             )
             .order_by(ActivityRecord.id.desc())
             .first()
@@ -139,8 +147,6 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
             stage = "简历筛选"
         elif data.type == "interview":
             stage = data.round or "面试"
-        elif data.type == "phone_screen":
-            stage = "电话初筛"
         elif data.type == "offer":
             stage = "Offer"
         else:

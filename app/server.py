@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app.database import engine
 from app import models
-from app.routes import candidates, resume, jobs, pipeline, dashboard, activities, dedup
+from app.routes import candidates, resume, jobs, pipeline, dashboard, activities, dedup, suppliers
 
 models.Base.metadata.create_all(bind=engine)
 Path("data/resumes").mkdir(parents=True, exist_ok=True)
@@ -118,6 +118,41 @@ with engine.connect() as conn:
     except Exception:
         pass
 
+    # ── v1-product-simplify: drop deprecated columns ──────────────────────
+    for drop_stmt in (
+        "ALTER TABLE jobs DROP COLUMN stages",
+        "ALTER TABLE jobs DROP COLUMN interview_rounds",
+        "ALTER TABLE candidate_job_links DROP COLUMN interview_rounds",
+    ):
+        try:
+            conn.execute(sa.text(drop_stmt))
+            conn.commit()
+        except Exception:
+            pass
+
+    # ── v1-supplier: suppliers table + candidate.supplier_id ────────────
+    try:
+        conn.execute(sa.text("""
+            CREATE TABLE IF NOT EXISTS suppliers (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name VARCHAR NOT NULL,
+              type VARCHAR,
+              contact_name VARCHAR,
+              phone VARCHAR,
+              email VARCHAR,
+              notes TEXT,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        conn.execute(sa.text("ALTER TABLE candidates ADD COLUMN supplier_id INTEGER REFERENCES suppliers(id)"))
+        conn.commit()
+    except Exception:
+        pass
+
 app = FastAPI(title="招聘管理工具")
 
 app.include_router(candidates.router)
@@ -127,6 +162,7 @@ app.include_router(pipeline.router)
 app.include_router(dashboard.router)
 app.include_router(activities.router)
 app.include_router(dedup.router)
+app.include_router(suppliers.router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/resumes", StaticFiles(directory="data/resumes"), name="resumes")

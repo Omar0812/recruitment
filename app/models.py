@@ -23,6 +23,7 @@ class Candidate(Base):
     work_experience = Column(JSON, default=list)  # [{company, title, period}]
     skill_tags = Column(JSON, default=list)
     source = Column(String)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
     notes = Column(Text)
     resume_path = Column(String)
     followup_status = Column(String)   # 待跟进 / 已联系 / 暂不考虑
@@ -34,6 +35,22 @@ class Candidate(Base):
 
     job_links = relationship("CandidateJobLink", back_populates="candidate", cascade="all, delete-orphan")
     history = relationship("HistoryEntry", back_populates="candidate", cascade="all, delete-orphan")
+    supplier = relationship("Supplier", back_populates="candidates")
+
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    type = Column(String)              # 猎头 / 招聘平台 / 内推 / 其他
+    contact_name = Column(String)
+    phone = Column(String)
+    email = Column(String)
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    candidates = relationship("Candidate", back_populates="supplier")
 
 
 class Job(Base):
@@ -46,12 +63,10 @@ class Job(Base):
     persona = Column(Text)
     status = Column(String, default="open")  # open / closed / paused
     hr_owner = Column(String)
-    stages = Column(JSON, default=lambda: ["简历筛选", "电话初筛", "面试", "Offer", "已入职"])
     city = Column(String)              # base 城市
     job_category = Column(String)      # 研发 / 销售 / 市场 / 职能
     employment_type = Column(String)   # 全职 / 实习 / 顾问
     priority = Column(String)          # 高 / 中 / 低
-    interview_rounds = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -71,7 +86,6 @@ class CandidateJobLink(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     rejection_reason = Column(String)  # 能力不足 / 薪资不匹配 / 主动放弃 / 其他
-    interview_rounds = Column(Integer, default=1)
 
     candidate = relationship("Candidate", back_populates="job_links")
     job = relationship("Job", back_populates="candidate_links")

@@ -1,7 +1,4 @@
-## Purpose
-定义岗位相关 API 的数据返回规范。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: active_count 过滤软删除候选人
 `GET /api/jobs` 返回的每个岗位的 `active_count` SHALL 只统计 `candidate.deleted_at IS NULL` 的活跃关联。

@@ -7,7 +7,7 @@ from datetime import datetime
 import os
 
 from app.database import get_db
-from app.models import Candidate, HistoryEntry
+from app.models import Candidate, HistoryEntry, Supplier
 
 router = APIRouter(prefix="/api/candidates", tags=["candidates"])
 
@@ -26,6 +26,7 @@ class CandidateCreate(BaseModel):
     years_exp: Optional[float] = None
     skill_tags: Optional[List[str]] = []
     source: Optional[str] = None
+    supplier_id: Optional[int] = None
     notes: Optional[str] = None
     resume_path: Optional[str] = None
     education_list: Optional[List[dict]] = []
@@ -46,6 +47,7 @@ class CandidateUpdate(BaseModel):
     years_exp: Optional[float] = None
     skill_tags: Optional[List[str]] = None
     source: Optional[str] = None
+    supplier_id: Optional[int] = None
     notes: Optional[str] = None
     followup_status: Optional[str] = None
     education_list: Optional[List[dict]] = None
@@ -74,6 +76,8 @@ def candidate_to_dict(c: Candidate) -> dict:
         "years_exp": c.years_exp,
         "skill_tags": c.skill_tags or [],
         "source": c.source,
+        "supplier_id": c.supplier_id,
+        "supplier_name": c.supplier.name if c.supplier else None,
         "notes": c.notes,
         "resume_path": c.resume_path,
         "followup_status": c.followup_status,
@@ -104,6 +108,11 @@ def create_candidate(data: CandidateCreate, db: Session = Depends(get_db)):
     if not payload.get("name") and payload.get("name_en"):
         payload["name"] = payload["name_en"]
     candidate = Candidate(**payload)
+    # Auto-fill source from supplier name
+    if candidate.supplier_id:
+        supplier = db.query(Supplier).filter(Supplier.id == candidate.supplier_id).first()
+        if supplier:
+            candidate.source = supplier.name
     _sync_legacy_fields(candidate)
     db.add(candidate)
     db.flush()
@@ -208,12 +217,10 @@ def get_candidate(candidate_id: int, db: Session = Depends(get_db)):
             "id": lnk.id,
             "job_id": lnk.job_id,
             "job_title": lnk.job.title if lnk.job else None,
-            "job_stages": lnk.job.stages if lnk.job and lnk.job.stages else [],
             "stage": lnk.stage,
             "notes": lnk.notes,
             "outcome": lnk.outcome,
             "rejection_reason": lnk.rejection_reason,
-            "interview_rounds": lnk.interview_rounds or 1,
             "created_at": lnk.created_at.isoformat() if lnk.created_at else None,
         }
         for lnk in c.job_links
@@ -228,6 +235,11 @@ def update_candidate(candidate_id: int, data: CandidateUpdate, db: Session = Dep
         raise HTTPException(status_code=404, detail="候选人不存在")
     for field, value in data.model_dump(exclude_none=True).items():
         setattr(c, field, value)
+    # Auto-fill source from supplier name
+    if c.supplier_id:
+        supplier = db.query(Supplier).filter(Supplier.id == c.supplier_id).first()
+        if supplier:
+            c.source = supplier.name
     _sync_legacy_fields(c)
     c.updated_at = datetime.utcnow()
     db.add(HistoryEntry(candidate_id=c.id, event_type="updated", detail="信息已更新"))

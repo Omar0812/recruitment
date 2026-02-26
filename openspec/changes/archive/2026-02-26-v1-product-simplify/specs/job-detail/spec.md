@@ -1,22 +1,4 @@
-## Purpose
-定义岗位详情页的展示规范，包括基本信息 tab 和招聘进展 tab。
-
-## Requirements
-
-### Requirement: Job detail pipeline tab is read-only
-The recruitment progress tab on the job detail page SHALL display candidates by stage in a read-only format with no action buttons.
-
-#### Scenario: Viewing pipeline tab
-- **WHEN** user navigates to a job detail page and clicks the recruitment progress tab
-- **THEN** candidates are listed by stage with no move/reject/interview action buttons
-
-#### Scenario: Navigate to in-progress page
-- **WHEN** user views a candidate in the pipeline tab
-- **THEN** a "→ 进行中" link is shown next to each candidate name, linking to `#/pipeline`
-
-#### Scenario: No kanban route
-- **WHEN** user navigates to `#/jobs/pipeline/{id}`
-- **THEN** the page shows "页面不存在" (route no longer exists)
+## MODIFIED Requirements
 
 ### Requirement: 候选人详情流程 tab 使用活动链派生阶段
 候选人详情页"流程" tab 的时间轴 SHALL 从活动链派生阶段展示，不再依赖 job_stages 字段。
@@ -33,6 +15,14 @@ The recruitment progress tab on the job detail page SHALL display candidates by 
 - **WHEN** 候选人流程包含历史 phone_screen 活动
 - **THEN** 时间轴中该节点显示为"电话初筛"
 
+## REMOVED Requirements
+
+### Requirement: 候选人详情流程 tab 使用岗位真实阶段
+**Reason**: Job.stages 字段已删除，job_stages 不再存在。时间轴改为从活动链派生。
+**Migration**: 前端删除对 job_stages 的依赖，改为遍历活动链生成时间轴节点。
+
+## ADDED Requirements
+
 ### Requirement: 岗位创建编辑表单不含 stages 和 interview_rounds
 岗位创建和编辑表单 SHALL 不包含阶段配置区域和面试轮次配置。
 
@@ -43,9 +33,3 @@ The recruitment progress tab on the job detail page SHALL display candidates by 
 #### Scenario: 编辑岗位表单
 - **WHEN** 用户打开编辑岗位表单
 - **THEN** 表单不显示 stages textarea 和 interview_rounds 输入框
-
-## REMOVED Requirements
-
-### Requirement: 候选人详情流程 tab 使用岗位真实阶段
-**Reason**: Job.stages 字段已删除，job_stages 不再存在。时间轴改为从活动链派生。
-**Migration**: 前端删除对 job_stages 的依赖，改为遍历活动链生成时间轴节点。

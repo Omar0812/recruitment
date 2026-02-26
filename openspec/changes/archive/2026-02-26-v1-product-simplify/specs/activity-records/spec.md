@@ -1,22 +1,4 @@
-## Purpose
-定义活动记录的数据模型、API 接口和表单校验规范。
-
-## Requirements
-
-### Requirement: resume_review is a valid activity type
-The system SHALL support `resume_review` as an activity type with pass/reject conclusion.
-
-#### Scenario: Creating resume_review activity
-- **WHEN** a CandidateJobLink is created
-- **THEN** a resume_review activity is auto-created with status=`pending`
-
-#### Scenario: Completing resume_review with pass
-- **WHEN** user marks resume_review conclusion=`通过`
-- **THEN** activity status is set to `completed` and stage is updated to `简历筛选`
-
-#### Scenario: Completing resume_review with reject
-- **WHEN** user marks resume_review conclusion=`淘汰`
-- **THEN** activity status is set to `completed` and link outcome is set to `rejected`
+## MODIFIED Requirements
 
 ### Requirement: Activity records support multiple types
 The system SHALL store all candidate lifecycle events in a single `activity_records` table with a `type` field distinguishing: `resume_review`, `interview`, `note`, `offer`. The `stage_change` and `phone_screen` types are retired and SHALL NOT be created by new code. Historical `phone_screen` records are preserved and rendered with their original label "电话初筛".
@@ -49,21 +31,6 @@ The system SHALL store all candidate lifecycle events in a single `activity_reco
 - **WHEN** a link has existing phone_screen activity records
 - **THEN** they are rendered in the timeline with label "电话初筛" and their original data intact
 
-### Requirement: Activity records API
-The system SHALL expose `/api/activities` endpoints. The `stage` field in POST body is now optional; the backend derives and updates `CandidateJobLink.stage` automatically after each activity create/update.
-
-#### Scenario: List activities for a link
-- **WHEN** GET `/api/activities?link_id={id}` is called
-- **THEN** all activity records for that link are returned, ordered by created_at ascending, excluding stage_change type records from chain display
-
-#### Scenario: Create activity
-- **WHEN** POST `/api/activities` is called with valid type and link_id
-- **THEN** chain tail validation runs; if passed, activity record is created, stage is auto-derived and updated on the link
-
-#### Scenario: Update activity
-- **WHEN** PATCH `/api/activities/{id}` is called
-- **THEN** mutable fields are updated; stage is re-derived and updated on the link
-
 ### Requirement: Activity form conclusion validation
 The system SHALL validate that conclusion is not empty before saving activity forms (offer, interview inline form). If conclusion is empty or an empty string, the system SHALL show an error toast and prevent the save.
 
@@ -79,6 +46,8 @@ The system SHALL validate that conclusion is not empty before saving activity fo
 - **WHEN** user clicks save on any activity form with a valid conclusion selected
 - **THEN** system submits the API request normally
 
+## ADDED Requirements
+
 ### Requirement: Resume review requires actor on completion
 The system SHALL require an `actor` (筛选人) field when completing a resume_review activity with conclusion 通过 or 淘汰. The frontend SHALL display an actor input field above the pass/reject buttons.
 
@@ -91,14 +60,6 @@ The system SHALL require an `actor` (筛选人) field when completing a resume_r
 - **THEN** system shows toast "请填写筛选人" and does not submit
 
 ## REMOVED Requirements
-
-### Requirement: Activity records lock stage at creation
-**Reason**: Stage is now derived from the activity chain tail automatically. The `stage` field on ActivityRecord is still stored for historical reference but is auto-populated by the backend, not passed by the frontend.
-**Migration**: `ActivityCreate.stage` is now Optional. Backend auto-fills it based on activity type.
-
-### Requirement: Stage change is recorded
-**Reason**: stage_change activity type is retired. Stage is now derived from the activity chain tail automatically; no explicit stage_change event is needed.
-**Migration**: Existing stage_change records are preserved in the database but excluded from UI rendering and chain calculations.
 
 ### Requirement: Creating a phone screen activity
 **Reason**: phone_screen is retired. It was functionally identical to interview. Historical records are preserved but no new phone_screen activities can be created.
