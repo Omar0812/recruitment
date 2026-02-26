@@ -596,3 +596,73 @@ body {
   color: #1a1a2e;
 }
 .pt-advance-dropdown button:hover { background: #f3f4f6; }
+
+/* Terminate flow button + dropdown (task 6.3) */
+.pt-terminate-wrap { position: relative; display: inline-block; }
+.pt-terminate-btn {
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pt-terminate-btn:hover { background: #b91c1c; }
+.pt-terminate-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  z-index: 100;
+  min-width: 130px;
+  margin-top: 2px;
+}
+.pt-terminate-dropdown button {
+  display: block;
+  width: 100%;
+  padding: 7px 12px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+  color: #1a1a2e;
+}
+.pt-terminate-dropdown button:hover { background: #fee2e2; color: #dc2626; }
+
+/* Scheduled interview card (task 6.1) */
+.iv-card-scheduled {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+.iv-tag-scheduled {
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 11px;
+}
+
+/* Cancelled interview card (task 6.2) */
+.iv-card-cancelled {
+  opacity: 0.5;
+  background: #f9fafb;
+  border-color: #e5e7eb;
+}
+.iv-tag-cancelled {
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 11px;
+}
+
+/* Collapsible comment (task 6.4) */
+.iv-comment-collapsible {
+  color: #555;
+  margin-top: 4px;
+  transition: max-height 0.2s ease;
+  overflow: hidden;
+}
+

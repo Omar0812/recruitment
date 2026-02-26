@@ -30,6 +30,9 @@ with engine.connect() as conn:
           score INTEGER, comment TEXT, conclusion VARCHAR,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )""",
+        "ALTER TABLE interview_records ADD COLUMN status VARCHAR DEFAULT 'completed'",
+        "ALTER TABLE interview_records ADD COLUMN scheduled_at DATETIME",
+        "ALTER TABLE interview_records ADD COLUMN location VARCHAR",
     ):
         try:
             conn.execute(__import__("sqlalchemy").text(stmt))

@@ -102,6 +102,9 @@ class InterviewRecord(Base):
     score = Column(Integer)       # 1-5
     comment = Column(Text)
     conclusion = Column(String)   # 通过 / 待定 / 淘汰
+    status = Column(String, default="completed")   # scheduled / completed / cancelled
+    scheduled_at = Column(DateTime, nullable=True)
+    location = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     link = relationship("CandidateJobLink", back_populates="interview_records")

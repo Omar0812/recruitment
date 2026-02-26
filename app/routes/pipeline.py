@@ -123,6 +123,24 @@ def update_outcome(link_id: int, data: OutcomeUpdate, db: Session = Depends(get_
     return link_to_dict(lnk)
 
 
+@router.patch("/link/{link_id}/withdraw")
+def withdraw_candidate(link_id: int, db: Session = Depends(get_db)):
+    lnk = db.query(CandidateJobLink).filter(CandidateJobLink.id == link_id).first()
+    if not lnk:
+        raise HTTPException(status_code=404, detail="关联不存在")
+    lnk.outcome = "withdrawn"
+    lnk.updated_at = datetime.utcnow()
+    db.add(HistoryEntry(
+        candidate_id=lnk.candidate_id,
+        job_id=lnk.job_id,
+        event_type="outcome",
+        detail="结果：候选人退出",
+    ))
+    db.commit()
+    db.refresh(lnk)
+    return link_to_dict(lnk)
+
+
 @router.patch("/link/{link_id}/notes")
 def update_notes(link_id: int, data: NotesUpdate, db: Session = Depends(get_db)):
     lnk = db.query(CandidateJobLink).filter(CandidateJobLink.id == link_id).first()

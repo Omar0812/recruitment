@@ -18,6 +18,9 @@ class InterviewCreate(BaseModel):
     score: Optional[int] = None
     comment: Optional[str] = None
     conclusion: Optional[str] = None
+    status: Optional[str] = "completed"
+    scheduled_at: Optional[datetime] = None
+    location: Optional[str] = None
 
 
 def record_to_dict(r: InterviewRecord) -> dict:
@@ -30,6 +33,9 @@ def record_to_dict(r: InterviewRecord) -> dict:
         "score": r.score,
         "comment": r.comment,
         "conclusion": r.conclusion,
+        "status": r.status or "completed",
+        "scheduled_at": r.scheduled_at.isoformat() if r.scheduled_at else None,
+        "location": r.location,
         "created_at": r.created_at.isoformat() if r.created_at else None,
     }
 
@@ -49,6 +55,9 @@ def create_interview(data: InterviewCreate, db: Session = Depends(get_db)):
         score=data.score,
         comment=data.comment,
         conclusion=data.conclusion,
+        status=data.status or "completed",
+        scheduled_at=data.scheduled_at,
+        location=data.location,
     )
     db.add(record)
     db.commit()
@@ -71,6 +80,9 @@ class InterviewUpdate(BaseModel):
     score: Optional[int] = None
     comment: Optional[str] = None
     conclusion: Optional[str] = None
+    status: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
+    location: Optional[str] = None
 
 
 @router.patch("/{record_id}")
