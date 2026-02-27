@@ -156,10 +156,16 @@ app.include_router(context.router)
 app.include_router(insights.router)
 app.include_router(settings.router)
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/resumes", StaticFiles(directory="data/resumes"), name="resumes")
+app.mount("/assets", StaticFiles(directory="static/dist/assets"), name="dist-assets")
 
 
 @app.get("/")
 def index():
-    return FileResponse("static/index.html")
+    return FileResponse("static/dist/index.html")
+
+
+@app.get("/{full_path:path}")
+def spa_fallback(full_path: str):
+    # Serve Vue SPA for all non-API routes (hash router handles routing client-side)
+    return FileResponse("static/dist/index.html")

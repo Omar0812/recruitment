@@ -11,6 +11,12 @@ if [ ! -d ".venv" ]; then
     echo "初始化完成！"
 fi
 
+# 前端构建（如需重新构建，取消下方注释）
+# if [ -d "frontend" ]; then
+#     echo "构建前端..."
+#     cd frontend && npm install && npm run build && cd ..
+# fi
+
 echo "启动招聘管理工具..."
 
 # 如果 8000 端口被占用，先关掉旧进程
