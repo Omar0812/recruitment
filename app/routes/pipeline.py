@@ -114,11 +114,18 @@ def get_active_pipeline(db: Session = Depends(get_db)):
         CandidateJobLink.outcome == None,
         Candidate.deleted_at.is_(None)
     ).options(
-        joinedload(CandidateJobLink.candidate),
+        joinedload(CandidateJobLink.candidate).joinedload(Candidate.supplier),
         joinedload(CandidateJobLink.job),
     ).all()
     result = []
     for lnk in links:
+        supplier = lnk.candidate.supplier if lnk.candidate else None
+        fee_rate = None
+        if supplier and supplier.fee_rate:
+            try:
+                fee_rate = float(supplier.fee_rate)
+            except (ValueError, TypeError):
+                fee_rate = None
         result.append({
             "id": lnk.id,
             "candidate_id": lnk.candidate_id,
@@ -130,6 +137,8 @@ def get_active_pipeline(db: Session = Depends(get_db)):
             "starred": bool(lnk.candidate.starred) if lnk.candidate else False,
             "days_since_update": (datetime.utcnow() - lnk.updated_at).days if lnk.updated_at else None,
             "notes": lnk.notes,
+            "supplier_name": supplier.name if supplier else None,
+            "supplier_fee_rate": fee_rate,
         })
     return result
 
@@ -140,13 +149,55 @@ def get_hired_pipeline(db: Session = Depends(get_db)):
         CandidateJobLink.outcome == "hired",
         Candidate.deleted_at.is_(None)
     ).options(
-        joinedload(CandidateJobLink.candidate),
+        joinedload(CandidateJobLink.candidate).joinedload(Candidate.supplier),
         joinedload(CandidateJobLink.job),
         joinedload(CandidateJobLink.activity_records),
     ).all()
     result = []
     for lnk in links:
         onboard = next((r for r in lnk.activity_records if r.type == "onboard"), None)
+        # offer 月薪：优先读最新 offer 的 payload.monthly_salary
+        offer_acts = sorted(
+            [r for r in lnk.activity_records if r.type == "offer"],
+            key=lambda r: r.created_at or datetime.min,
+        )
+        latest_offer = offer_acts[-1] if offer_acts else None
+        offer_monthly = None
+        if latest_offer:
+            p = latest_offer.payload or {}
+            offer_monthly = p.get("monthly_salary") or latest_offer.salary
+
+        # onboard 月薪和入职日期：优先 payload
+        onboard_monthly = None
+        start_date = None
+        if onboard:
+            p = onboard.payload or {}
+            onboard_monthly = p.get("monthly_salary")
+            start_date = p.get("start_date") or onboard.start_date
+
+        monthly_salary = onboard_monthly or offer_monthly
+
+        # supplier 信息
+        supplier = lnk.candidate.supplier if lnk.candidate else None
+        supplier_name = supplier.name if supplier else None
+        guarantee_days = supplier.fee_guarantee_days if supplier else None
+
+        # fee_rate 转换
+        fee_rate = None
+        if supplier and supplier.fee_rate:
+            try:
+                fee_rate = float(supplier.fee_rate)
+            except (ValueError, TypeError):
+                fee_rate = None
+
+        # 猎头费计算
+        fee_amount = None
+        if monthly_salary and fee_rate is not None:
+            try:
+                fee_amount = round(float(monthly_salary) * 12 * fee_rate / 100)
+            except (ValueError, TypeError):
+                fee_amount = None
+
         result.append({
             "id": lnk.id,
             "candidate_id": lnk.candidate_id,
@@ -154,9 +205,14 @@ def get_hired_pipeline(db: Session = Depends(get_db)):
             "job_id": lnk.job_id,
             "job_title": lnk.job.title if lnk.job else None,
             "state": lnk.state,
-            "start_date": onboard.start_date if onboard else None,
+            "start_date": start_date,
             "hired_at": lnk.updated_at.isoformat() if lnk.updated_at else None,
             "source": lnk.candidate.source if lnk.candidate else None,
+            "monthly_salary": monthly_salary,
+            "supplier_name": supplier_name,
+            "guarantee_days": guarantee_days,
+            "fee_rate": fee_rate,
+            "fee_amount": fee_amount,
         })
     return result
 

@@ -108,7 +108,7 @@
         <div class="section-header section-header--p1">
           <span class="priority-badge priority-badge--p1">P1</span> 需要跟进
         </div>
-        <div v-for="item in p1" :key="`p1-${item.activity_id || item.link_id}`" class="today-card today-card--p1">
+        <div v-for="item in p1" :key="`p1-${item.type}-${item.activity_id || item.link_id}`" class="today-card today-card--p1">
           <template v-if="item.type === 'interview_feedback_missing'">
             <div class="tc-header">
               <div class="tc-main">
@@ -131,6 +131,19 @@
               </div>
               <div class="tc-meta">阶段：{{ item.stage }}</div>
               <el-button size="small" plain @click="goToPipeline(item)">查看</el-button>
+            </div>
+          </template>
+          <template v-else-if="item.type === 'guarantee_expiring'">
+            <div class="tc-header">
+              <div class="tc-main">
+                <span class="tc-candidate">{{ item.candidate_name }}</span>
+                <el-tag size="small" type="warning" style="margin-left: 8px">担保期 {{ item.days_left }} 天到期</el-tag>
+                <span class="tc-job">{{ item.job_title }}</span>
+              </div>
+              <div class="tc-meta">
+                来源：{{ item.supplier_name }} · 到期：{{ item.expiry_date }}
+              </div>
+              <el-button size="small" plain @click="goToHired">查看已入职</el-button>
             </div>
           </template>
         </div>
@@ -279,6 +292,10 @@ function goToPipeline(item) {
 
 function goToTalent() {
   router.push('/talent')
+}
+
+function goToHired() {
+  router.push('/hired')
 }
 
 function onActivitySaved() {

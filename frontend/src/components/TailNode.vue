@@ -102,14 +102,26 @@
     />
 
     <!-- Onboard form -->
-    <el-dialog v-model="onboardDialogVisible" title="确认入职" width="400px">
+    <el-dialog v-model="onboardDialogVisible" title="确认入职" width="440px">
       <el-form :model="onboardForm" label-width="80px" size="default">
         <el-form-item label="入职日期">
           <el-date-picker v-model="onboardForm.start_date" type="date" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="实际薪资">
-          <el-input v-model="onboardForm.salary" placeholder="实际薪资" />
+        <el-form-item label="实际月薪">
+          <el-input-number
+            v-model="onboardForm.monthly_salary"
+            :min="0"
+            :step="1000"
+            :precision="0"
+            style="width: 100%"
+            placeholder="元/月"
+          />
         </el-form-item>
+        <!-- 猎头费预览（仅有 supplier 时显示） -->
+        <div v-if="link.supplier_name && link.supplier_fee_rate && onboardForm.monthly_salary" class="fee-preview">
+          <span class="fee-preview-label">猎头来源：{{ link.supplier_name }} · 费率：{{ link.supplier_fee_rate }}%</span>
+          <span class="fee-preview-amount">应付猎头费：¥{{ calcFeePreview }}</span>
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="onboardDialogVisible = false">取消</el-button>
@@ -137,7 +149,6 @@ import { activitiesApi } from '../api/activities'
 import { pipelineApi } from '../api/pipeline'
 import ActivityCard from './ActivityCard.vue'
 import ActivityForm from './ActivityForm.vue'
-
 const props = defineProps({
   link: { type: Object, required: true },
   tail: { type: Object, required: true },
@@ -156,7 +167,7 @@ const ivForm = reactive({ conclusion: '', score: 0, comment: '' })
 const offerForm = reactive({ conclusion: '' })
 const editingOffer = ref(false)
 const onboardDialogVisible = ref(false)
-const onboardForm = reactive({ start_date: null, salary: '' })
+const onboardForm = reactive({ start_date: null, monthly_salary: null })
 const rejectDialogVisible = ref(false)
 const rejectReason = ref('')
 const rrActor = ref(props.tail.actor || '')
@@ -192,6 +203,13 @@ const showOnboard = computed(() =>
   props.tail.type === 'offer' &&
   tailConclusion.value === '接受'
 )
+
+const calcFeePreview = computed(() => {
+  const ms = onboardForm.monthly_salary
+  const fr = props.link.supplier_fee_rate
+  if (!ms || !fr) return null
+  return Math.round(ms * 12 * fr / 100).toLocaleString()
+})
 
 const nextOptions = computed(() => {
   if (state.value !== 'COMPLETED') return []
@@ -295,7 +313,13 @@ async function saveOfferInline() {
 
 function openOnboardForm() {
   onboardForm.start_date = null
-  onboardForm.salary = ''
+  // 预填最新 offer 的 monthly_salary
+  const offerActs = props.allActivities.filter(a => a.type === 'offer')
+  const latestOffer = offerActs.length ? offerActs[offerActs.length - 1] : null
+  const prefill = latestOffer
+    ? ((latestOffer.payload || {}).monthly_salary || latestOffer.salary || null)
+    : null
+  onboardForm.monthly_salary = prefill ? Number(prefill) : null
   onboardDialogVisible.value = true
 }
 
@@ -306,7 +330,13 @@ async function saveOnboard() {
     await activitiesApi.create({
       link_id: props.link.id,
       type: 'onboard',
-      ...onboardForm,
+      start_date: onboardForm.start_date,
+      payload: {
+        start_date: onboardForm.start_date instanceof Date
+          ? onboardForm.start_date.toISOString().split('T')[0]
+          : onboardForm.start_date,
+        monthly_salary: onboardForm.monthly_salary || null,
+      },
     })
     onboardDialogVisible.value = false
     ElMessage.success('已确认入职')
@@ -372,5 +402,25 @@ function onActivitySaved() {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.fee-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: #f6ffed;
+  border: 1px solid #b7eb8f;
+  border-radius: 8px;
+  margin: 0 0 12px 0;
+}
+.fee-preview-label {
+  font-size: 12px;
+  color: #52c41a;
+}
+.fee-preview-amount {
+  font-size: 15px;
+  font-weight: 700;
+  color: #389e0d;
 }
 </style>

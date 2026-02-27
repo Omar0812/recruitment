@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from datetime import datetime, timedelta
 
 from app.database import get_db
-from app.models import ActivityRecord, CandidateJobLink, Candidate
+from app.models import ActivityRecord, CandidateJobLink, Candidate, Supplier
 
 router = APIRouter(prefix="/api/insights", tags=["insights"])
 
@@ -229,6 +229,61 @@ def get_today(db: Session = Depends(get_db)):
             "type": "unassigned_candidates",
             "candidates": unassigned,
         })
+
+    # ── P1-C: 担保期将在 7 天内到期 ──────────────────────────────────────────
+    hired_links = (
+        db.query(CandidateJobLink)
+        .join(Candidate, CandidateJobLink.candidate_id == Candidate.id)
+        .filter(
+            CandidateJobLink.state == "HIRED",
+            Candidate.deleted_at.is_(None),
+        )
+        .options(
+            joinedload(CandidateJobLink.candidate).joinedload(Candidate.supplier),
+            joinedload(CandidateJobLink.job),
+            joinedload(CandidateJobLink.activity_records),
+        )
+        .all()
+    )
+
+    for lnk in hired_links:
+        supplier = lnk.candidate.supplier if lnk.candidate else None
+        if not supplier or not supplier.fee_guarantee_days:
+            continue
+
+        # 获取入职日期（优先 onboard payload）
+        onboard = next((r for r in lnk.activity_records if r.type == "onboard"), None)
+        if not onboard:
+            continue
+        p = onboard.payload or {}
+        start_date_raw = p.get("start_date") or onboard.start_date
+        if not start_date_raw:
+            continue
+
+        try:
+            if isinstance(start_date_raw, str):
+                start_dt = datetime.fromisoformat(start_date_raw.replace("Z", "+00:00"))
+                if start_dt.tzinfo is not None:
+                    start_dt = start_dt.replace(tzinfo=None)
+            else:
+                start_dt = start_date_raw if isinstance(start_date_raw, datetime) else datetime.combine(start_date_raw, datetime.min.time())
+        except (ValueError, TypeError):
+            continue
+
+        expiry_dt = start_dt + timedelta(days=supplier.fee_guarantee_days)
+        days_left = (expiry_dt - now).days
+
+        if 0 < days_left <= 7:
+            today_items.append({
+                "priority": "P1",
+                "type": "guarantee_expiring",
+                "link_id": lnk.id,
+                "candidate_name": lnk.candidate.name if lnk.candidate else None,
+                "job_title": lnk.job.title if lnk.job else None,
+                "supplier_name": supplier.name,
+                "days_left": days_left,
+                "expiry_date": expiry_dt.date().isoformat(),
+            })
 
     # ── Week summary ──────────────────────────────────────────────────────────
     in_progress = db.query(CandidateJobLink).join(Candidate).filter(
