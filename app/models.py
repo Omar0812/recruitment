@@ -99,7 +99,6 @@ class CandidateJobLink(Base):
 
     candidate = relationship("Candidate", back_populates="job_links")
     job = relationship("Job", back_populates="candidate_links")
-    interview_records = relationship("InterviewRecord", back_populates="link", cascade="all, delete-orphan")
     activity_records = relationship("ActivityRecord", back_populates="link", cascade="all, delete-orphan")
 
 
@@ -114,26 +113,6 @@ class HistoryEntry(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     candidate = relationship("Candidate", back_populates="history")
-
-
-class InterviewRecord(Base):
-    __tablename__ = "interview_records"
-
-    id = Column(Integer, primary_key=True, index=True)
-    link_id = Column(Integer, ForeignKey("candidate_job_links.id"), nullable=False)
-    round = Column(String)        # 一面 / 二面 / 终面 等
-    interviewer = Column(String)
-    interview_time = Column(String)
-    score = Column(Integer)       # 1-5
-    comment = Column(Text)
-    conclusion = Column(String)   # 通过 / 待定 / 淘汰
-    status = Column(String, default="completed")   # scheduled / completed / cancelled
-    scheduled_at = Column(DateTime, nullable=True)
-    location = Column(String, nullable=True)
-    rejection_reason = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    link = relationship("CandidateJobLink", back_populates="interview_records")
 
 
 class ActivityRecord(Base):

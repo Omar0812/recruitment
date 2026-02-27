@@ -5,7 +5,7 @@ from typing import Optional
 from datetime import datetime
 
 from app.database import get_db
-from app.models import Candidate, CandidateJobLink, InterviewRecord, HistoryEntry, ActivityRecord
+from app.models import Candidate, CandidateJobLink, HistoryEntry, ActivityRecord
 
 router = APIRouter(prefix="/api/candidates/dedup", tags=["dedup"])
 
@@ -132,10 +132,10 @@ def merge_candidates(data: MergeRequest, db: Session = Depends(get_db)):
             # 不同岗位：直接迁移
             sec_link.candidate_id = data.primary_id
         else:
-            # 相同岗位：迁移面试记录到主档案对应 link，然后删除副档案记录
+            # 相同岗位：迁移活动记录到主档案对应 link，然后删除副档案记录
             pri_link = primary_job_ids[sec_link.job_id]
-            for ir in list(sec_link.interview_records):
-                ir.link_id = pri_link.id
+            for ar in list(sec_link.activity_records):
+                ar.link_id = pri_link.id
             db.delete(sec_link)
 
     # 迁移历史记录

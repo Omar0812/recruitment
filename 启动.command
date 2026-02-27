@@ -12,4 +12,9 @@ if [ ! -d ".venv" ]; then
 fi
 
 echo "启动招聘管理工具..."
+
+# 如果 8000 端口被占用，先关掉旧进程
+lsof -ti :8000 | xargs kill -9 2>/dev/null || true
+sleep 1
+
 .venv/bin/python3 main.py

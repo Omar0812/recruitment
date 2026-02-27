@@ -24,17 +24,6 @@ with engine.connect() as conn:
         "ALTER TABLE candidates ADD COLUMN followup_status VARCHAR",
         "ALTER TABLE candidates ADD COLUMN merged_into INTEGER",
         "ALTER TABLE candidates ADD COLUMN deleted_at DATETIME",
-        """CREATE TABLE IF NOT EXISTS interview_records (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          link_id INTEGER NOT NULL REFERENCES candidate_job_links(id) ON DELETE CASCADE,
-          round VARCHAR, interviewer VARCHAR, interview_time VARCHAR,
-          score INTEGER, comment TEXT, conclusion VARCHAR,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )""",
-        "ALTER TABLE interview_records ADD COLUMN status VARCHAR DEFAULT 'completed'",
-        "ALTER TABLE interview_records ADD COLUMN scheduled_at DATETIME",
-        "ALTER TABLE interview_records ADD COLUMN location VARCHAR",
-        "ALTER TABLE interview_records ADD COLUMN rejection_reason TEXT",
     ):
         try:
             conn.execute(sa.text(stmt))

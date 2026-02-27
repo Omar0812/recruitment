@@ -116,6 +116,8 @@ def create_candidate(data: CandidateCreate, db: Session = Depends(get_db)):
     payload = data.model_dump()
     if not payload.get("name") and payload.get("name_en"):
         payload["name"] = payload["name_en"]
+    if not payload.get("name"):
+        raise HTTPException(status_code=400, detail="姓名不能为空")
     candidate = Candidate(**payload)
     # Auto-fill source from supplier name
     if candidate.supplier_id:

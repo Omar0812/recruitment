@@ -184,9 +184,9 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
         if data.conclusion not in ("通过", "不通过", "有瑕疵"):
             raise HTTPException(status_code=400, detail="背调结论须为：通过 / 不通过 / 有瑕疵")
 
-    # 链尾约束：note 类型跳过校验
+    # 链尾约束：note 和 onboard 类型跳过校验（onboard 是终态操作，不受阶段限制）
     all_chain_types = CHAIN_TYPES | _RETIRED_CHAIN_TYPES
-    if data.type in CHAIN_TYPES:
+    if data.type in CHAIN_TYPES and data.type != "onboard":
         tail = (
             db.query(ActivityRecord)
             .filter(
@@ -271,6 +271,10 @@ def update_activity(record_id: int, data: ActivityUpdate, db: Session = Depends(
         raise HTTPException(status_code=400, detail="评分须在 1-5 之间")
     for field, val in data.model_dump(exclude_unset=True).items():
         setattr(record, field, val)
+    # sync updated fields into payload to keep payload-first reads consistent
+    if record.payload is not None:
+        updated = data.model_dump(exclude_unset=True)
+        record.payload = {**record.payload, **{k: v for k, v in updated.items() if k in record.payload}}
     _sync_stage(record.link_id, db)
     db.commit()
     db.refresh(record)

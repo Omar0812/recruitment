@@ -70,15 +70,27 @@
 ---
 
 ### Requirement: P2 — 建档未分配岗位
-接口 SHALL 将有 Candidate 记录但无任何 `outcome=null` 的 CandidateJobLink 的候选人列为 P2 待办，类型为 `unassigned_candidates`。多个候选人合并为一条，包含 candidates 数组（id/name/created_at）。
+接口 SHALL 将从未有过任何 CandidateJobLink（job_links 列表为空）的候选人列为 P2 待办，类型为 `unassigned_candidates`。多个候选人合并为一条，包含 candidates 数组（id/name/created_at）。有历史流程记录（无论 outcome 是 hired/rejected/withdrawn）的候选人不出现在未分配列表中。
 
 #### Scenario: 有未分配候选人
-- **WHEN** 存在 candidates 表中有记录，但无 outcome=null 的 CandidateJobLink
+- **WHEN** 存在 candidates 表中有记录，且该候选人从未有过任何 CandidateJobLink（job_links 为空）
 - **THEN** 返回一条 P2 待办，type=`unassigned_candidates`，candidates 数组包含所有未分配候选人
 
 #### Scenario: 软删除候选人不计入
 - **WHEN** 候选人 deleted_at 不为 null
 - **THEN** 不计入未分配列表
+
+#### Scenario: 入职候选人不出现在未分配列表
+- **WHEN** 候选人有 outcome='hired' 的 CandidateJobLink，当前无 outcome=null 的活跃 link
+- **THEN** 该候选人不出现在 P2 unassigned 列表中
+
+#### Scenario: 退出候选人不出现在未分配列表
+- **WHEN** 候选人有 outcome='withdrawn' 的历史 link，当前无活跃流程
+- **THEN** 该候选人不出现在 P2 unassigned 列表中
+
+#### Scenario: 进行中的候选人不出现在未分配列表
+- **WHEN** 候选人有 outcome=null 的活跃 link
+- **THEN** 该候选人不出现在未分配列表（已在进行中）
 
 ---
 

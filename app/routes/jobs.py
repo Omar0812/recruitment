@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 from pydantic import BaseModel
 from typing import Optional, List
@@ -116,7 +116,9 @@ def list_jobs(
         query = query.filter(Job.employment_type == employment_type)
     if priority:
         query = query.filter(Job.priority == priority)
-    jobs = query.order_by(Job.created_at.desc()).all()
+    jobs = query.options(
+        joinedload(Job.candidate_links).joinedload(CandidateJobLink.candidate)
+    ).order_by(Job.created_at.desc()).all()
     result = []
     for job in jobs:
         active_links = [lnk for lnk in job.candidate_links if lnk.outcome is None and (lnk.candidate is None or lnk.candidate.deleted_at is None)]

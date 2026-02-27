@@ -207,7 +207,7 @@ def get_today(db: Session = Depends(get_db)):
         })
 
     # ── P2: 建档未分配岗位 ────────────────────────────────────────────────────
-    # Candidates with no active (outcome=null) CandidateJobLink
+    # Candidates who have never been assigned to any job (no job_links at all)
     all_candidates = (
         db.query(Candidate)
         .filter(Candidate.deleted_at.is_(None))
@@ -216,8 +216,7 @@ def get_today(db: Session = Depends(get_db)):
     )
     unassigned = []
     for cand in all_candidates:
-        has_active = any(lnk.outcome is None for lnk in cand.job_links)
-        if not has_active:
+        if not cand.job_links:  # 从未分配过任何岗位
             unassigned.append({
                 "id": cand.id,
                 "name": cand.name,
