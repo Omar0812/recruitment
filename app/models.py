@@ -86,6 +86,7 @@ class CandidateJobLink(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     rejection_reason = Column(String)  # 能力不足 / 薪资不匹配 / 主动放弃 / 其他
+    state = Column(String)  # IN_PROGRESS / HIRED / REJECTED / WITHDRAWN
 
     candidate = relationship("Candidate", back_populates="job_links")
     job = relationship("Job", back_populates="candidate_links")
@@ -156,5 +157,8 @@ class ActivityRecord(Base):
     # stage_change 专有
     from_stage = Column(String, nullable=True)
     to_stage = Column(String, nullable=True)
+
+    # memory layer 预留
+    embedding_text = Column(Text, nullable=True)
 
     link = relationship("CandidateJobLink", back_populates="activity_records")

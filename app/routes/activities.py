@@ -181,6 +181,11 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
         from_stage=data.from_stage,
         to_stage=data.to_stage,
     )
+
+    # embedding_text 预填（interview 类型）
+    if data.type == "interview":
+        parts = [p for p in [data.round, conclusion, data.comment] if p]
+        record.embedding_text = " ".join(parts) if parts else None
     db.add(record)
     db.flush()
     _sync_stage(data.link_id, db)
@@ -188,6 +193,7 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
     # onboard 完成后自动标记 hired
     if data.type == "onboard":
         lnk.outcome = "hired"
+        lnk.state = "HIRED"
         lnk.updated_at = datetime.utcnow()
 
     db.commit()

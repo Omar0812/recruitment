@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -40,6 +40,7 @@ def link_to_dict(lnk: CandidateJobLink) -> dict:
         "job_id": lnk.job_id,
         "candidate_name": lnk.candidate.name if lnk.candidate else None,
         "stage": lnk.stage,
+        "state": lnk.state,
         "notes": lnk.notes,
         "outcome": lnk.outcome,
         "rejection_reason": lnk.rejection_reason,
@@ -66,7 +67,7 @@ def link_candidate(data: LinkCreate, db: Session = Depends(get_db)):
         current_job = existing.job.title if existing.job else f"岗位#{existing.job_id}"
         raise HTTPException(status_code=400, detail=f"该候选人已在「{current_job}」流程中，请先结束再投递新岗位")
 
-    lnk = CandidateJobLink(candidate_id=data.candidate_id, job_id=data.job_id, stage="简历筛选")
+    lnk = CandidateJobLink(candidate_id=data.candidate_id, job_id=data.job_id, stage="简历筛选", state="IN_PROGRESS")
     db.add(lnk)
     db.flush()
     db.add(ActivityRecord(
@@ -97,6 +98,10 @@ def update_outcome(link_id: int, data: OutcomeUpdate, db: Session = Depends(get_
     if not lnk:
         raise HTTPException(status_code=404, detail="关联不存在")
     lnk.outcome = data.outcome
+    if data.outcome == "rejected":
+        lnk.state = "REJECTED"
+    elif data.outcome == "withdrawn":
+        lnk.state = "WITHDRAWN"
     if data.rejection_reason:
         lnk.rejection_reason = data.rejection_reason
     lnk.updated_at = datetime.utcnow()
@@ -122,6 +127,7 @@ def withdraw_candidate(link_id: int, data: WithdrawUpdate = WithdrawUpdate(), db
     if not lnk:
         raise HTTPException(status_code=404, detail="关联不存在")
     lnk.outcome = "withdrawn"
+    lnk.state = "WITHDRAWN"
     if data.reason:
         lnk.rejection_reason = data.reason
     lnk.updated_at = datetime.utcnow()
@@ -146,6 +152,7 @@ def hire_candidate(link_id: int, db: Session = Depends(get_db)):
     if not lnk:
         raise HTTPException(status_code=404, detail="关联不存在")
     lnk.outcome = "hired"
+    lnk.state = "HIRED"
     lnk.updated_at = datetime.utcnow()
     job_title = lnk.job.title if lnk.job else f"岗位#{lnk.job_id}"
     db.add(HistoryEntry(
@@ -178,6 +185,7 @@ def transfer_job(link_id: int, data: TransferJob, db: Session = Depends(get_db))
 
     # Close old link
     lnk.outcome = "withdrawn"
+    lnk.state = "WITHDRAWN"
     lnk.updated_at = datetime.utcnow()
 
     # Create new link
@@ -185,6 +193,7 @@ def transfer_job(link_id: int, data: TransferJob, db: Session = Depends(get_db))
         candidate_id=lnk.candidate_id,
         job_id=data.new_job_id,
         stage="简历筛选",
+        state="IN_PROGRESS",
     )
     db.add(new_lnk)
     db.flush()
@@ -226,6 +235,9 @@ def get_active_pipeline(db: Session = Depends(get_db)):
     links = db.query(CandidateJobLink).join(Candidate).filter(
         CandidateJobLink.outcome == None,
         Candidate.deleted_at.is_(None)
+    ).options(
+        joinedload(CandidateJobLink.candidate),
+        joinedload(CandidateJobLink.job),
     ).all()
     result = []
     for lnk in links:
@@ -236,6 +248,7 @@ def get_active_pipeline(db: Session = Depends(get_db)):
             "job_id": lnk.job_id,
             "job_title": lnk.job.title if lnk.job else None,
             "stage": lnk.stage,
+            "state": lnk.state,
             "starred": bool(lnk.candidate.starred) if lnk.candidate else False,
             "days_since_update": (datetime.utcnow() - lnk.updated_at).days if lnk.updated_at else None,
             "notes": lnk.notes,
@@ -248,20 +261,21 @@ def get_hired_pipeline(db: Session = Depends(get_db)):
     links = db.query(CandidateJobLink).join(Candidate).filter(
         CandidateJobLink.outcome == "hired",
         Candidate.deleted_at.is_(None)
+    ).options(
+        joinedload(CandidateJobLink.candidate),
+        joinedload(CandidateJobLink.job),
+        joinedload(CandidateJobLink.activity_records),
     ).all()
     result = []
     for lnk in links:
-        # 从 onboard 活动获取 start_date
-        onboard = db.query(ActivityRecord).filter(
-            ActivityRecord.link_id == lnk.id,
-            ActivityRecord.type == "onboard",
-        ).first()
+        onboard = next((r for r in lnk.activity_records if r.type == "onboard"), None)
         result.append({
             "id": lnk.id,
             "candidate_id": lnk.candidate_id,
             "candidate_name": lnk.candidate.name if lnk.candidate else None,
             "job_id": lnk.job_id,
             "job_title": lnk.job.title if lnk.job else None,
+            "state": lnk.state,
             "start_date": onboard.start_date if onboard else None,
             "hired_at": lnk.updated_at.isoformat() if lnk.updated_at else None,
             "source": lnk.candidate.source if lnk.candidate else None,

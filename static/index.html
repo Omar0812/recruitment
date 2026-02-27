@@ -64,5 +64,11 @@
   </div>
 
   <script src="/static/app.js"></script>
+  <script type="module">
+    import { api, showToast, withLoading } from "/static/lib/api.js";
+    import { formatTime, formatDate, formatStage } from "/static/lib/helpers.js";
+    // Expose to window so non-module scripts and inline handlers can use them
+    Object.assign(window, { api, showToast, withLoading, formatTime, formatDate, formatStage });
+  </script>
 </body>
 </html>
