@@ -1935,6 +1935,7 @@ async function renderPipelineTracking(el) {
     inner.innerHTML = `
       <div id="pt-tail-${l.id}"></div>
       <div id="pt-next-${l.id}" style="margin-top:8px"></div>
+      <div id="pt-inline-form-${l.id}" style="margin-top:8px"></div>
       ${history.length ? `
       <div class="collapsible collapsed" style="margin-top:10px" id="pt-history-wrap-${l.id}">
         <span class="collapsible-toggle" id="pt-history-toggle-${l.id}">▶ 查看历史记录(${history.length}条)</span>
@@ -1943,14 +1944,15 @@ async function renderPipelineTracking(el) {
         </div>
       </div>` : `<div id="pt-history-${l.id}"></div>`}
       <div id="pt-notes-${l.id}" style="margin-top:4px">${notesHTML}</div>
-      <div class="action-btn-group" style="margin-top:10px">
-        <button class="btn btn-secondary btn-sm pt-note-btn">+ 备注</button>
-        <button type="button" class="btn btn-secondary btn-sm pt-transfer-btn">转移岗位</button>
-        <button type="button" class="btn btn-secondary btn-sm pt-withdraw-btn" style="color:var(--c-reject);border-color:#fca5a5">候选人退出</button>
+      <div class="pt-bottom-actions" style="margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;gap:12px;font-size:12px;color:#6b7280">
+        <a href="javascript:void(0)" class="pt-note-link">备注</a>
+        <a href="javascript:void(0)" class="pt-withdraw-link">退出</a>
+        <a href="javascript:void(0)" class="pt-reject-link">淘汰</a>
       </div>`;
 
     const tailDiv = inner.querySelector(`#pt-tail-${l.id}`);
     const nextDiv = inner.querySelector(`#pt-next-${l.id}`);
+    const inlineFormDiv = inner.querySelector(`#pt-inline-form-${l.id}`);
 
     async function refreshActivities() {
       delete ivCache[l.id];
@@ -1964,73 +1966,55 @@ async function renderPipelineTracking(el) {
       renderExpandInner(inner, l, ivCache[l.id]);
     }
 
+    // Close any open inline form
+    function closeInlineForm() {
+      inlineFormDiv.innerHTML = "";
+    }
+
+    // Determine tail state: A/B/C/D
+    function getTailState() {
+      if (!tail) return "EMPTY";
+
+      // State A: Interview scheduled, not yet time
+      if (tail.type === "interview" && tail.status === "scheduled") {
+        const now = new Date();
+        const scheduledTime = tail.scheduled_at ? new Date(tail.scheduled_at) : null;
+        if (scheduledTime && scheduledTime > now) {
+          return "INTERVIEW_UPCOMING";
+        }
+        return "INTERVIEW_PAST_DUE";
+      }
+
+      // State B: Interview past due (time passed, needs evaluation)
+      // Already handled above
+
+      // State C: Activity completed
+      if (tailComplete) {
+        return "COMPLETED";
+      }
+
+      // State D: Activity in progress (resume_review, offer, etc.)
+      return "IN_PROGRESS";
+    }
+
     // ── render tail node ──────────────────────────────────────────────────────
     function renderTail() {
-      if (!tail) {
+      const state = getTailState();
+
+      if (state === "EMPTY") {
         tailDiv.innerHTML = `<div style="color:#aaa;font-size:13px;padding:4px 0">暂无活动记录</div>`;
         return;
       }
 
-      if (tail.type === "resume_review" && !tailComplete) {
-        // pending resume_review: inline form — 筛选人[___] [✓通过] [✗淘汰]
-        tailDiv.innerHTML = `
-          <div class="iv-card activity-card" data-activity-id="${tail.id}">
-            <div class="iv-card-header"><span class="iv-card-round">简历筛选</span></div>
-            <div class="form-inline" style="margin-top:8px">
-              <label style="font-size:12px;color:var(--c-text-secondary);white-space:nowrap">筛选人</label>
-              <input class="rr-actor-input" placeholder="姓名" value="${tail.actor||""}" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:120px;box-sizing:border-box">
-              <button class="btn btn-primary btn-sm rr-pass-btn">✓ 通过</button>
-              <button class="btn btn-sm rr-reject-btn" style="color:var(--c-reject);border:1px solid #fca5a5;background:var(--bg-reject)">✗ 淘汰</button>
-            </div>
-          </div>`;
-        tailDiv.querySelector(".rr-pass-btn").onclick = async () => {
-          const actor = tailDiv.querySelector(".rr-actor-input").value.trim();
-          if (!actor) { showToast("请填写筛选人", "error"); return; }
-          await api.patch(`/api/activities/${tail.id}`, { conclusion: "通过", status: "completed", actor });
-          await refreshActivities();
-        };
-        tailDiv.querySelector(".rr-reject-btn").onclick = () => {
-          const actor = tailDiv.querySelector(".rr-actor-input").value.trim();
-          if (!actor) { showToast("请填写筛选人", "error"); return; }
-          // Save actor first, then open reject overlay
-          api.patch(`/api/activities/${tail.id}`, { actor }).then(() => {
-            openRejectOverlay(l.id, l.candidate_name, l.job_title, async () => {
-              await refreshActivities(); renderContent();
-            });
-          });
-        };
-        return;
-      }
-
-      if (tail.type === "interview" && tail.status === "scheduled") {
-        // scheduled interview: show complete/cancel buttons
+      // State A: Interview upcoming (not yet time)
+      if (state === "INTERVIEW_UPCOMING") {
         tailDiv.innerHTML = renderActivityCard(tail, false);
         const actionDiv = document.createElement("div");
         actionDiv.className = "action-btn-group";
-        actionDiv.innerHTML = `
-          <button class="btn btn-primary btn-sm iv-complete-btn">填写面评</button>
-          <button class="btn btn-secondary btn-sm iv-cancel-btn">取消面试</button>`;
+        actionDiv.style.marginTop = "8px";
+        actionDiv.innerHTML = `<button class="btn btn-secondary btn-sm iv-cancel-btn">取消面试</button>`;
         tailDiv.querySelector(".activity-card").appendChild(actionDiv);
 
-        actionDiv.querySelector(".iv-complete-btn").onclick = () => {
-          const formDiv = document.createElement("div");
-          formDiv.className = "iv-edit-form";
-          formDiv.innerHTML = renderIvFormHTML({...tail, status: "completed"}, tail.round);
-          bindIvFormInteractivity(formDiv);
-          tailDiv.innerHTML = "";
-          tailDiv.appendChild(formDiv);
-          formDiv.querySelector(".ivf-cancel").onclick = () => renderExpandInner(inner, l, activities);
-          formDiv.querySelector(".ivf-save").onclick = async () => {
-            const data = { ...getIvFormData(formDiv), status: "completed" };
-            if (!data.conclusion) { showToast("请选择结论", "error"); return; }
-            await api.patch(`/api/activities/${tail.id}`, data);
-            if (data.conclusion === "淘汰") {
-              await api.patch(`/api/pipeline/link/${l.id}/outcome`, { outcome: "rejected", rejection_reason: data.rejection_reason || null });
-              await refreshActivities(); renderContent(); return;
-            }
-            await refreshActivities();
-          };
-        };
         actionDiv.querySelector(".iv-cancel-btn").onclick = async () => {
           await api.patch(`/api/activities/${tail.id}`, { status: "cancelled" });
           await refreshActivities();
@@ -2038,154 +2022,220 @@ async function renderPipelineTracking(el) {
         return;
       }
 
-      if (tail.type === "offer" && !tailComplete) {
-        // incomplete offer: show edit form inline
-        let formHTML, getFormData, bindFn;
-        formHTML = renderOfferFormHTML(tail);
-        getFormData = getOfferFormData;
-        bindFn = bindOfferFormInteractivity;
-        tailDiv.innerHTML = formHTML;
-        bindFn(tailDiv);
-        tailDiv.querySelector(".ivf-save").onclick = async () => {
-          const data = getFormData(tailDiv);
+      // State B: Interview past due (auto-expand evaluation form)
+      if (state === "INTERVIEW_PAST_DUE") {
+        const formDiv = document.createElement("div");
+        formDiv.className = "iv-edit-form";
+        formDiv.innerHTML = renderIvFormHTML({...tail, status: "completed"}, tail.round);
+        bindIvFormInteractivity(formDiv);
+        tailDiv.innerHTML = "";
+        tailDiv.appendChild(formDiv);
+
+        formDiv.querySelector(".ivf-cancel").onclick = async () => {
+          // Cancel means mark as cancelled
+          await api.patch(`/api/activities/${tail.id}`, { status: "cancelled" });
+          await refreshActivities();
+        };
+        formDiv.querySelector(".ivf-save").onclick = async () => {
+          const data = { ...getIvFormData(formDiv), status: "completed" };
           if (!data.conclusion) { showToast("请选择结论", "error"); return; }
           await api.patch(`/api/activities/${tail.id}`, data);
-          if (tail.type === "offer" && data.conclusion === "接受") {
-            openHireOverlay(l.id, l.candidate_name, l.job_title, () => {
-              const idx = links.findIndex(lk => lk.id === l.id);
-              if (idx !== -1) links.splice(idx, 1);
-              renderContent();
-            });
-            return;
+          if (data.conclusion === "淘汰") {
+            await api.patch(`/api/pipeline/link/${l.id}/outcome`, { outcome: "rejected", rejection_reason: data.rejection_reason || null });
+            await refreshActivities(); renderContent(); return;
           }
           await refreshActivities();
         };
-        tailDiv.querySelector(".ivf-cancel").onclick = () => renderExpandInner(inner, l, activities);
         return;
       }
 
-      // completed tail: show read-only card with edit button
-      tailDiv.innerHTML = renderActivityCard(tail, true);
-      tailDiv.querySelectorAll(".activity-edit-btn").forEach(btn => {
-        btn.onclick = () => {
-          const formDiv = document.createElement("div");
-          formDiv.className = "iv-edit-form";
-          if (tail.type === "interview") {
-            formDiv.innerHTML = renderIvFormHTML(tail, tail.round);
-            bindIvFormInteractivity(formDiv);
-            formDiv.querySelector(".ivf-save").onclick = async () => {
-              const data = getIvFormData(formDiv);
-              if (!data.conclusion) { showToast("请选择结论", "error"); return; }
-              await api.patch(`/api/activities/${tail.id}`, { ...data, status: "completed" });
-              await refreshActivities();
-            };
-          } else if (tail.type === "offer") {
-            formDiv.innerHTML = renderOfferFormHTML(tail);
-            bindOfferFormInteractivity(formDiv);
-            formDiv.querySelector(".ivf-save").onclick = async () => {
-              const data = getOfferFormData(formDiv);
-              if (!data.conclusion) { showToast("请选择结论", "error"); return; }
-              await api.patch(`/api/activities/${tail.id}`, data);
-              await refreshActivities();
-            };
-          } else if (tail.type === "note") {
-            formDiv.innerHTML = renderNoteFormHTML(tail);
-            formDiv.querySelector(".ivf-save").onclick = async () => {
-              await api.patch(`/api/activities/${tail.id}`, getNoteFormData(formDiv));
-              await refreshActivities();
-            };
-          }
-          formDiv.querySelector(".ivf-cancel").onclick = () => renderExpandInner(inner, l, activities);
-          tailDiv.innerHTML = "";
-          tailDiv.appendChild(formDiv);
-        };
-      });
+      // State D: In-progress activities (resume_review, offer)
+      if (state === "IN_PROGRESS") {
+        if (tail.type === "resume_review") {
+          // pending resume_review: inline form — 筛选人[___] [✓通过] [✗淘汰]
+          tailDiv.innerHTML = `
+            <div class="iv-card activity-card" data-activity-id="${tail.id}">
+              <div class="iv-card-header"><span class="iv-card-round">简历筛选</span></div>
+              <div class="form-inline" style="margin-top:8px">
+                <label style="font-size:12px;color:var(--c-text-secondary);white-space:nowrap">筛选人</label>
+                <input class="rr-actor-input" placeholder="姓名" value="${tail.actor||""}" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:120px;box-sizing:border-box">
+                <button class="btn btn-primary btn-sm rr-pass-btn">✓ 通过</button>
+                <button class="btn btn-sm rr-reject-btn" style="color:var(--c-reject);border:1px solid #fca5a5;background:var(--bg-reject)">✗ 淘汰</button>
+              </div>
+            </div>`;
+          tailDiv.querySelector(".rr-pass-btn").onclick = async () => {
+            const actor = tailDiv.querySelector(".rr-actor-input").value.trim();
+            if (!actor) { showToast("请填写筛选人", "error"); return; }
+            await api.patch(`/api/activities/${tail.id}`, { conclusion: "通过", status: "completed", actor });
+            await refreshActivities();
+          };
+          tailDiv.querySelector(".rr-reject-btn").onclick = () => {
+            const actor = tailDiv.querySelector(".rr-actor-input").value.trim();
+            if (!actor) { showToast("请填写筛选人", "error"); return; }
+            // Save actor first, then open reject overlay
+            api.patch(`/api/activities/${tail.id}`, { actor }).then(() => {
+              openRejectOverlay(l.id, l.candidate_name, l.job_title, async () => {
+                await refreshActivities(); renderContent();
+              });
+            });
+          };
+          return;
+        }
+
+        if (tail.type === "offer") {
+          // incomplete offer: show edit form inline
+          tailDiv.innerHTML = renderOfferFormHTML(tail);
+          bindOfferFormInteractivity(tailDiv);
+          tailDiv.querySelector(".ivf-save").onclick = async () => {
+            const data = getOfferFormData(tailDiv);
+            if (!data.conclusion) { showToast("请选择结论", "error"); return; }
+            await api.patch(`/api/activities/${tail.id}`, data);
+            if (tail.type === "offer" && data.conclusion === "接受") {
+              openHireOverlay(l.id, l.candidate_name, l.job_title, () => {
+                const idx = links.findIndex(lk => lk.id === l.id);
+                if (idx !== -1) links.splice(idx, 1);
+                renderContent();
+              });
+              return;
+            }
+            await refreshActivities();
+          };
+          tailDiv.querySelector(".ivf-cancel").onclick = () => renderExpandInner(inner, l, activities);
+          return;
+        }
+      }
+
+      // State C: Completed activity (show read-only card with edit button)
+      if (state === "COMPLETED") {
+        tailDiv.innerHTML = renderActivityCard(tail, true);
+        tailDiv.querySelectorAll(".activity-edit-btn").forEach(btn => {
+          btn.onclick = () => {
+            const formDiv = document.createElement("div");
+            formDiv.className = "iv-edit-form";
+            if (tail.type === "interview") {
+              formDiv.innerHTML = renderIvFormHTML(tail, tail.round);
+              bindIvFormInteractivity(formDiv);
+              formDiv.querySelector(".ivf-save").onclick = async () => {
+                const data = getIvFormData(formDiv);
+                if (!data.conclusion) { showToast("请选择结论", "error"); return; }
+                await api.patch(`/api/activities/${tail.id}`, { ...data, status: "completed" });
+                await refreshActivities();
+              };
+            } else if (tail.type === "offer") {
+              formDiv.innerHTML = renderOfferFormHTML(tail);
+              bindOfferFormInteractivity(formDiv);
+              formDiv.querySelector(".ivf-save").onclick = async () => {
+                const data = getOfferFormData(formDiv);
+                if (!data.conclusion) { showToast("请选择结论", "error"); return; }
+                await api.patch(`/api/activities/${tail.id}`, data);
+                await refreshActivities();
+              };
+            } else if (tail.type === "note") {
+              formDiv.innerHTML = renderNoteFormHTML(tail);
+              formDiv.querySelector(".ivf-save").onclick = async () => {
+                await api.patch(`/api/activities/${tail.id}`, getNoteFormData(formDiv));
+                await refreshActivities();
+              };
+            }
+            formDiv.querySelector(".ivf-cancel").onclick = () => renderExpandInner(inner, l, activities);
+            tailDiv.innerHTML = "";
+            tailDiv.appendChild(formDiv);
+          };
+        });
+      }
     }
 
     // ── render next step selector ─────────────────────────────────────────────
     function renderNextStep() {
-      if (!tailComplete || !tail) return;
+      const state = getTailState();
+      if (state !== "COMPLETED" || !tail) return;
 
       // Offer已接受但未入职：显示 onboard 表单
       if (tail.type === "offer" && tail.conclusion === "接受") {
         nextDiv.innerHTML = `
-          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px">
-            <div style="font-size:13px;color:#166534;margin-bottom:8px">Offer 已接受，请确认入职：</div>
-            <div id="pt-onboard-form-${l.id}">${renderOnboardFormHTML()}</div>
+          <div class="pt-next-step-row">
+            <div class="pt-next-step-label">下一步：</div>
+            <div class="pt-next-step-options">
+              <a href="javascript:void(0)" class="pt-next-option active" data-type="onboard">确认入职</a>
+            </div>
           </div>`;
-        const formDiv = nextDiv.querySelector(`#pt-onboard-form-${l.id}`);
-        formDiv.querySelector(".ivf-save").onclick = () => withLoading(formDiv.querySelector(".ivf-save"), async () => {
-          const data = getOnboardFormData(formDiv);
-          if (!data.start_date) { showToast("请填写入职日期", "error"); return; }
-          await api.post("/api/activities", { link_id: l.id, type: "onboard", ...data });
-          showToast("已确认入职", "success");
-          const idx = links.findIndex(lk => lk.id === l.id);
-          if (idx !== -1) links.splice(idx, 1);
-          renderContent();
-        });
-        formDiv.querySelector(".ivf-cancel").onclick = () => { nextDiv.innerHTML = ""; };
+
+        nextDiv.querySelector('[data-type="onboard"]').onclick = (e) => {
+          e.preventDefault();
+          closeInlineForm();
+          inlineFormDiv.innerHTML = renderOnboardFormHTML();
+          const formDiv = inlineFormDiv;
+          formDiv.querySelector(".ivf-save").onclick = () => withLoading(formDiv.querySelector(".ivf-save"), async () => {
+            const data = getOnboardFormData(formDiv);
+            if (!data.start_date) { showToast("请填写入职日期", "error"); return; }
+            await api.post("/api/activities", { link_id: l.id, type: "onboard", ...data });
+            showToast("已确认入职", "success");
+            const idx = links.findIndex(lk => lk.id === l.id);
+            if (idx !== -1) links.splice(idx, 1);
+            renderContent();
+          });
+          formDiv.querySelector(".ivf-cancel").onclick = closeInlineForm;
+        };
         return;
       }
 
       if (tail.conclusion !== "通过" && tail.conclusion !== "接受") return;
 
-      // Determine primary and secondary actions
-      let primary, secondary;
+      // Determine available next steps based on tail type
+      let options = [];
       if (tail.type === "resume_review") {
-        primary = { type: "interview", label: "安排面试" };
-        secondary = { type: "offer", label: "直接发Offer" };
+        options = [
+          { type: "interview", label: "安排面试" },
+          { type: "offer", label: "发Offer" },
+          { type: "background_check", label: "背调" }
+        ];
       } else if (tail.type === "interview") {
-        primary = { type: "interview", label: "安排下一轮面试" };
-        secondary = { type: "offer", label: "发Offer" };
+        options = [
+          { type: "interview", label: "下一轮面试" },
+          { type: "offer", label: "发Offer" },
+          { type: "background_check", label: "背调" }
+        ];
       } else {
         return;
       }
 
       nextDiv.innerHTML = `
-        <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-            <span style="font-size:13px;color:#1e40af;font-weight:600">${primary.label}</span>
-            <a href="javascript:void(0)" id="pt-alt-${l.id}" style="font-size:12px;color:#6b7280;text-decoration:underline">${secondary.label}</a>
-            <a href="javascript:void(0)" id="pt-bgcheck-${l.id}" style="font-size:12px;color:#6b7280;text-decoration:underline">安排背调</a>
+        <div class="pt-next-step-row">
+          <div class="pt-next-step-label">下一步：</div>
+          <div class="pt-next-step-options">
+            ${options.map((opt, idx) =>
+              `<a href="javascript:void(0)" class="pt-next-option ${idx === 0 ? 'active' : ''}" data-type="${opt.type}">${opt.label}</a>`
+            ).join('')}
           </div>
-          <div id="pt-next-form-${l.id}"></div>
         </div>`;
 
-      const formDiv = nextDiv.querySelector(`#pt-next-form-${l.id}`);
-      // Auto-expand primary form
-      showNextForm(primary.type, formDiv);
+      // Bind click handlers for next step options
+      nextDiv.querySelectorAll('.pt-next-option').forEach(link => {
+        link.onclick = (e) => {
+          e.preventDefault();
+          const type = link.dataset.type;
 
-      // Secondary text link switches form
-      nextDiv.querySelector(`#pt-alt-${l.id}`).onclick = (e) => {
-        e.preventDefault();
-        const altLink = nextDiv.querySelector(`#pt-alt-${l.id}`);
-        const titleSpan = altLink.previousElementSibling;
-        const curLabel = titleSpan.textContent;
-        const curType = formDiv.dataset.currentType;
-        titleSpan.textContent = altLink.textContent;
-        altLink.textContent = curLabel;
-        const newType = curType === primary.type ? secondary.type : primary.type;
-        showNextForm(newType, formDiv);
-      };
+          // Update active state
+          nextDiv.querySelectorAll('.pt-next-option').forEach(l => l.classList.remove('active'));
+          link.classList.add('active');
 
-      // Background check link
-      nextDiv.querySelector(`#pt-bgcheck-${l.id}`).onclick = (e) => {
-        e.preventDefault();
-        showNextForm("background_check", formDiv);
-      };
+          // Show form in inline area
+          closeInlineForm();
+          showNextFormInline(type);
+        };
+      });
     }
 
-    function showNextForm(type, formDiv) {
-      formDiv.dataset.currentType = type;
+    function showNextFormInline(type) {
       if (type === "interview") {
         const autoRound = nextInterviewRound(activities.filter(a => a.type === "interview"));
-        formDiv.innerHTML = renderScheduleFormHTML(autoRound);
-        const saveBtn = formDiv.querySelector(".ivf-schedule-save");
+        inlineFormDiv.innerHTML = renderScheduleFormHTML(autoRound);
+        const saveBtn = inlineFormDiv.querySelector(".ivf-schedule-save");
         saveBtn.onclick = () => withLoading(saveBtn, async () => {
-          const interviewer = formDiv.querySelector(".ivf-interviewer").value.trim();
+          const interviewer = inlineFormDiv.querySelector(".ivf-interviewer").value.trim();
           if (!interviewer) { showToast("请填写面试官", "error"); return; }
-          const scheduledAt = getTimeSlotValue(formDiv, ".ivf-time-date", ".ivf-time-slot");
-          const location = formDiv.querySelector(".ivf-location").value.trim();
+          const scheduledAt = getTimeSlotValue(inlineFormDiv, ".ivf-time-date", ".ivf-time-slot");
+          const location = inlineFormDiv.querySelector(".ivf-location").value.trim();
           await api.post("/api/activities", {
             link_id: l.id, type: "interview",
             round: autoRound, actor: interviewer,
@@ -2195,12 +2245,12 @@ async function renderPipelineTracking(el) {
           showToast("面试已安排", "success");
           await refreshActivities();
         });
-        formDiv.querySelector(".ivf-cancel").onclick = () => { formDiv.innerHTML = ""; };
+        inlineFormDiv.querySelector(".ivf-cancel").onclick = closeInlineForm;
       } else if (type === "offer") {
-        formDiv.innerHTML = renderOfferFormHTML();
-        bindOfferFormInteractivity(formDiv);
-        formDiv.querySelector(".ivf-save").onclick = async () => {
-          const data = getOfferFormData(formDiv);
+        inlineFormDiv.innerHTML = renderOfferFormHTML();
+        bindOfferFormInteractivity(inlineFormDiv);
+        inlineFormDiv.querySelector(".ivf-save").onclick = async () => {
+          const data = getOfferFormData(inlineFormDiv);
           if (!data.conclusion) { showToast("请选择结论", "error"); return; }
           await api.post("/api/activities", { link_id: l.id, type: "offer", ...data });
           if (data.conclusion === "拒绝") {
@@ -2214,24 +2264,23 @@ async function renderPipelineTracking(el) {
           showToast("Offer 已保存", "success");
           await refreshActivities();
         };
-        formDiv.querySelector(".ivf-cancel").onclick = () => { formDiv.innerHTML = ""; };
+        inlineFormDiv.querySelector(".ivf-cancel").onclick = closeInlineForm;
       } else if (type === "background_check") {
-        formDiv.innerHTML = renderBgCheckFormHTML();
-        formDiv.querySelectorAll(".iv-conclusion-btn").forEach(btn => {
+        inlineFormDiv.innerHTML = renderBgCheckFormHTML();
+        inlineFormDiv.querySelectorAll(".iv-conclusion-btn").forEach(btn => {
           btn.addEventListener("click", () => {
-            formDiv.querySelectorAll(".iv-conclusion-btn").forEach(b => b.classList.remove("active"));
+            inlineFormDiv.querySelectorAll(".iv-conclusion-btn").forEach(b => b.classList.remove("active"));
             btn.classList.add("active");
-            formDiv.querySelector(".ivf-conclusion").value = btn.dataset.v;
+            inlineFormDiv.querySelector(".ivf-conclusion").value = btn.dataset.v;
           });
         });
-        formDiv.querySelector(".ivf-save").onclick = async () => {
-          const data = getBgCheckFormData(formDiv);
+        inlineFormDiv.querySelector(".ivf-save").onclick = async () => {
+          const data = getBgCheckFormData(inlineFormDiv);
           if (!data.conclusion) { showToast("请选择背调结论", "error"); return; }
           await api.post("/api/activities", { link_id: l.id, type: "background_check", ...data });
           if (data.conclusion === "不通过") {
             showToast("背调不通过，建议淘汰候选人", "error");
             await refreshActivities();
-            // Prompt to reject
             if (confirm("背调不通过，是否立即淘汰该候选人？")) {
               await api.patch(`/api/pipeline/link/${l.id}/outcome`, { outcome: "rejected", rejection_reason: "背调不通过" });
               const idx = links.findIndex(lk => lk.id === l.id);
@@ -2243,7 +2292,7 @@ async function renderPipelineTracking(el) {
           showToast("背调已记录", "success");
           await refreshActivities();
         };
-        formDiv.querySelector(".ivf-cancel").onclick = () => { formDiv.innerHTML = ""; };
+        inlineFormDiv.querySelector(".ivf-cancel").onclick = closeInlineForm;
       }
     }
 
@@ -2280,22 +2329,27 @@ async function renderPipelineTracking(el) {
       };
     });
 
-    // note button — always visible
-    inner.querySelector(".pt-note-btn").onclick = () => {
-      const noteFormDiv = document.createElement("div");
-      noteFormDiv.className = "note-form-inline";
-      noteFormDiv.innerHTML = renderNoteFormHTML();
-      inner.querySelector(`#pt-notes-${l.id}`).prepend(noteFormDiv);
-      noteFormDiv.querySelector(".ivf-save").onclick = async () => {
-        await api.post("/api/activities", { link_id: l.id, type: "note", ...getNoteFormData(noteFormDiv) });
+    // ── 底部操作栏：备注 / 退出 / 淘汰 始终可见 ────────────────────────────
+
+    // 备注内联展开
+    inner.querySelector(".pt-note-link").onclick = () => {
+      // 若已展开备注则收起
+      if (inlineFormDiv.dataset.formType === "note") { closeInlineForm(); return; }
+      closeInlineForm();
+      inlineFormDiv.dataset.formType = "note";
+      inlineFormDiv.innerHTML = renderNoteFormHTML();
+      inlineFormDiv.querySelector(".ivf-save").onclick = async () => {
+        const data = getNoteFormData(inlineFormDiv);
+        if (!data.notes) { showToast("请填写备注内容", "error"); return; }
+        await api.post("/api/activities", { link_id: l.id, type: "note", ...data });
         showToast("备注已保存", "success");
         await refreshActivities();
       };
-      noteFormDiv.querySelector(".ivf-cancel").onclick = () => noteFormDiv.remove();
+      inlineFormDiv.querySelector(".ivf-cancel").onclick = closeInlineForm;
     };
 
-    // withdraw button
-    inner.querySelector(".pt-withdraw-btn").onclick = () => {
+    // 退出内联展开
+    inner.querySelector(".pt-withdraw-link").onclick = () => {
       openWithdrawOverlay(l.id, l.candidate_name, l.job_title, () => {
         const idx = links.findIndex(lk => lk.id === l.id);
         if (idx !== -1) links.splice(idx, 1);
@@ -2303,8 +2357,48 @@ async function renderPipelineTracking(el) {
       });
     };
 
-    // transfer button
-    inner.querySelector(".pt-transfer-btn").onclick = async () => {
+    // 淘汰内联展开
+    inner.querySelector(".pt-reject-link").onclick = () => {
+      if (inlineFormDiv.dataset.formType === "reject") { closeInlineForm(); return; }
+      closeInlineForm();
+      inlineFormDiv.dataset.formType = "reject";
+      const REJECT_REASONS = ["能力不匹配", "薪资期望不符", "候选人放弃", "岗位暂停", "背调不通过", "其他"];
+      inlineFormDiv.innerHTML = `
+        <div class="pt-inline-section" style="background:#fff5f5;border:1px solid #fca5a5;border-radius:8px;padding:12px">
+          <div style="font-size:13px;font-weight:600;color:#dc2626;margin-bottom:10px">确认淘汰</div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">淘汰原因</label>
+            <select class="pt-reject-reason" style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+              <option value="">请选择原因</option>
+              ${REJECT_REASONS.map(r => `<option value="${r}">${r}</option>`).join("")}
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:10px">
+            <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">补充说明（选填）</label>
+            <textarea class="pt-reject-note" rows="2" style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box"></textarea>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sm pt-reject-confirm" style="background:#dc2626;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:13px;cursor:pointer">确认淘汰</button>
+            <button class="btn btn-secondary btn-sm pt-reject-cancel">取消</button>
+          </div>
+        </div>`;
+      inlineFormDiv.querySelector(".pt-reject-confirm").onclick = async () => {
+        const reason = inlineFormDiv.querySelector(".pt-reject-reason").value;
+        if (!reason) { showToast("请选择淘汰原因", "error"); return; }
+        const note = inlineFormDiv.querySelector(".pt-reject-note").value.trim();
+        const rejection_reason = note ? `${reason}：${note}` : reason;
+        await api.patch(`/api/pipeline/link/${l.id}/outcome`, { outcome: "rejected", rejection_reason });
+        showToast("已淘汰", "success");
+        const idx = links.findIndex(lk => lk.id === l.id);
+        if (idx !== -1) links.splice(idx, 1);
+        renderContent();
+      };
+      inlineFormDiv.querySelector(".pt-reject-cancel").onclick = closeInlineForm;
+    };
+
+    // transfer button (keep in dialog, no longer a big button)
+    const transferTrigger = inner.querySelector(".pt-transfer-link");
+    if (transferTrigger) transferTrigger.onclick = async () => {
       const jobs = await api.get("/api/jobs");
       const filtered = jobs.filter(j => j.id !== l.job_id);
       const html = `
