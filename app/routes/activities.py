@@ -6,45 +6,13 @@ from datetime import datetime
 
 from app.database import get_db
 from app.models import ActivityRecord, CandidateJobLink
+from app.schemas import ActivityOut
+from app.services.activities import (
+    CHAIN_TYPES, _RETIRED_CHAIN_TYPES,
+    derive_stage, sync_stage, build_payload, get_field,
+)
 
 router = APIRouter(prefix="/api/activities", tags=["activities"])
-
-CHAIN_TYPES = {"resume_review", "interview", "offer", "onboard", "background_check"}
-# phone_screen is retired but kept in STAGE_LABEL for historical data display
-_RETIRED_CHAIN_TYPES = {"phone_screen"}
-
-STAGE_LABEL = {
-    "resume_review": "简历筛选",
-    "phone_screen": "电话初筛",
-    "offer": "Offer",
-    "onboard": "入职确认",
-}
-
-
-def derive_stage(link_id: int, db: Session) -> str:
-    """从活动链尾推导 stage 标签。"""
-    all_chain_types = CHAIN_TYPES | _RETIRED_CHAIN_TYPES
-    last = (
-        db.query(ActivityRecord)
-        .filter(
-            ActivityRecord.link_id == link_id,
-            ActivityRecord.type.in_(all_chain_types),
-        )
-        .order_by(ActivityRecord.id.desc())
-        .first()
-    )
-    if not last:
-        return "待处理"
-    if last.type == "interview":
-        return last.round or "面试"
-    return STAGE_LABEL.get(last.type, last.type)
-
-
-def _sync_stage(link_id: int, db: Session):
-    lnk = db.query(CandidateJobLink).filter(CandidateJobLink.id == link_id).first()
-    if lnk:
-        lnk.stage = derive_stage(link_id, db)
-        lnk.updated_at = datetime.utcnow()
 
 
 class ActivityCreate(BaseModel):
@@ -86,83 +54,12 @@ class ActivityUpdate(BaseModel):
     start_date: Optional[str] = None
 
 
-def _get(r: ActivityRecord, field: str, default=None):
-    """Read from payload first, fallback to sparse column."""
-    p = r.payload or {}
-    if field in p:
-        return p[field]
-    return getattr(r, field, default)
-
-
-def _build_payload(data: "ActivityCreate", conclusion, status) -> dict:
-    """Build type-specific payload dict."""
-    t = data.type
-    if t == "interview":
-        return {
-            "round": data.round,
-            "score": data.score,
-            "conclusion": conclusion,
-            "scheduled_at": data.scheduled_at.isoformat() if data.scheduled_at else None,
-            "location": data.location,
-            "status": status,
-            "comment": data.comment,
-        }
-    if t == "offer":
-        return {
-            "monthly_salary": data.monthly_salary,
-            "salary_months": data.salary_months,
-            "other_cash": data.other_cash,
-            "salary": data.salary,
-            "start_date": data.start_date,
-            "conclusion": conclusion,
-            "comment": data.comment,
-        }
-    if t == "background_check":
-        return {
-            "conclusion": conclusion,
-            "notes": data.comment,
-        }
-    return {"conclusion": conclusion, "comment": data.comment}
-
-
-def record_to_dict(r: ActivityRecord) -> dict:
-    p = r.payload or {}
-    return {
-        "id": r.id,
-        "link_id": r.link_id,
-        "type": r.type,
-        "stage": r.stage,
-        "created_at": r.created_at.isoformat() if r.created_at else None,
-        "actor": r.actor,
-        "comment": p.get("comment") if "comment" in p else r.comment,
-        "conclusion": p.get("conclusion") if "conclusion" in p else r.conclusion,
-        "rejection_reason": r.rejection_reason,
-        "round": p.get("round") if "round" in p else r.round,
-        "interview_time": r.interview_time,
-        "scheduled_at": p.get("scheduled_at") if "scheduled_at" in p else (r.scheduled_at.isoformat() if r.scheduled_at else None),
-        "location": p.get("location") if "location" in p else r.location,
-        "status": p.get("status") if "status" in p else r.status,
-        "score": p.get("score") if "score" in p else r.score,
-        "salary": p.get("salary") if "salary" in p else r.salary,
-        "start_date": p.get("start_date") if "start_date" in p else r.start_date,
-        "from_stage": r.from_stage,
-        "to_stage": r.to_stage,
-        # offer compensation
-        "monthly_salary": p.get("monthly_salary"),
-        "salary_months": p.get("salary_months"),
-        "other_cash": p.get("other_cash"),
-        # background_check
-        "notes": p.get("notes"),
-        "payload": p,
-    }
-
-
 @router.get("")
 def list_activities(link_id: int, db: Session = Depends(get_db)):
     records = db.query(ActivityRecord).filter(
         ActivityRecord.link_id == link_id
     ).order_by(ActivityRecord.created_at.asc()).all()
-    return [record_to_dict(r) for r in records]
+    return [ActivityOut.model_validate(r).model_dump() for r in records]
 
 
 @router.post("")
@@ -173,18 +70,15 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
     if data.score is not None and not (1 <= data.score <= 5):
         raise HTTPException(status_code=400, detail="评分须在 1-5 之间")
 
-    # phone_screen is retired — reject new creation
     if data.type == "phone_screen":
         raise HTTPException(status_code=400, detail="phone_screen 类型已废弃，请使用 interview")
 
-    # background_check: validate conclusion
     if data.type == "background_check":
         if not data.conclusion:
             raise HTTPException(status_code=400, detail="背调结论为必填项")
         if data.conclusion not in ("通过", "不通过", "有瑕疵"):
             raise HTTPException(status_code=400, detail="背调结论须为：通过 / 不通过 / 有瑕疵")
 
-    # 链尾约束：note 和 onboard 类型跳过校验（onboard 是终态操作，不受阶段限制）
     all_chain_types = CHAIN_TYPES | _RETIRED_CHAIN_TYPES
     if data.type in CHAIN_TYPES and data.type != "onboard":
         tail = (
@@ -199,7 +93,6 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
         if tail and tail.conclusion is None and tail.status not in ("completed", "cancelled"):
             raise HTTPException(status_code=400, detail="当前活动尚未完成，请先完成后再添加下一步")
 
-    # stage 自动填充
     stage = data.stage
     if not stage:
         if data.type == "resume_review":
@@ -215,7 +108,6 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
         else:
             stage = lnk.stage or ""
 
-    # onboard 自动设置 conclusion/status
     conclusion = data.conclusion
     status = data.status
     if data.type == "onboard":
@@ -240,18 +132,16 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
         start_date=data.start_date,
         from_stage=data.from_stage,
         to_stage=data.to_stage,
-        payload=_build_payload(data, conclusion, status),
+        payload=build_payload(data.type, conclusion, status, data),
     )
 
-    # embedding_text 预填（interview 类型）
     if data.type == "interview":
         parts = [p for p in [data.round, conclusion, data.comment] if p]
         record.embedding_text = " ".join(parts) if parts else None
     db.add(record)
     db.flush()
-    _sync_stage(data.link_id, db)
+    sync_stage(data.link_id, db)
 
-    # onboard 完成后自动标记 hired
     if data.type == "onboard":
         lnk.outcome = "hired"
         lnk.state = "HIRED"
@@ -259,7 +149,7 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(record)
-    return record_to_dict(record)
+    return ActivityOut.model_validate(record).model_dump()
 
 
 @router.patch("/{record_id}")
@@ -271,14 +161,13 @@ def update_activity(record_id: int, data: ActivityUpdate, db: Session = Depends(
         raise HTTPException(status_code=400, detail="评分须在 1-5 之间")
     for field, val in data.model_dump(exclude_unset=True).items():
         setattr(record, field, val)
-    # sync updated fields into payload to keep payload-first reads consistent
     if record.payload is not None:
         updated = data.model_dump(exclude_unset=True)
         record.payload = {**record.payload, **{k: v for k, v in updated.items() if k in record.payload}}
-    _sync_stage(record.link_id, db)
+    sync_stage(record.link_id, db)
     db.commit()
     db.refresh(record)
-    return record_to_dict(record)
+    return ActivityOut.model_validate(record).model_dump()
 
 
 @router.delete("/{record_id}")
@@ -289,6 +178,6 @@ def delete_activity(record_id: int, db: Session = Depends(get_db)):
     link_id = record.link_id
     db.delete(record)
     db.flush()
-    _sync_stage(link_id, db)
+    sync_stage(link_id, db)
     db.commit()
     return {"ok": True}

@@ -105,7 +105,16 @@ The system SHALL require an `actor` (筛选人) field when completing a resume_r
 - **WHEN** 客户端更新面试活动 status='completed'，再次 GET /api/activities?link_id=x
 - **THEN** 该记录返回的 status 为 'completed'，不被旧 payload 覆盖
 
-### Requirement: onboard 活动跳过链尾约束
+### Requirement: Activity serialization via Pydantic schema
+activity records 序列化 SHALL 通过 `ActivityOut` Pydantic schema 实现，不再使用手写 `record_to_dict()` 函数。payload 优先读逻辑 MUST 保留，行为与现有完全一致。
+
+#### Scenario: GET /api/activities returns serialized records
+- **WHEN** `GET /api/activities?link_id={id}` 被调用
+- **THEN** response 为 activity 对象数组，每个对象包含 `id`、`type`、`stage`、`payload`、`conclusion`、`round`、`score` 等现有所有字段
+
+#### Scenario: Payload-first read preserved
+- **WHEN** ActivityRecord 的 payload 包含 `conclusion` 字段
+- **THEN** `ActivityOut.conclusion` 读取 payload 中的值，忽略稀疏列 `r.conclusion`
 `POST /api/activities` 中，`onboard` 类型 SHALL 跳过链尾约束检查（不要求上一条 chain 活动有 conclusion 或 status=completed）。onboard 是终态操作，可在任意阶段直接触发。
 
 #### Scenario: offer conclusion 为 null 时可创建 onboard

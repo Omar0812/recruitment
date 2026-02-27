@@ -8,6 +8,8 @@ import os
 
 from app.database import get_db
 from app.models import Candidate, HistoryEntry, Supplier, CandidateJobLink, ActivityRecord
+from app.schemas import CandidateOut
+from app.services import candidates as candidates_svc
 
 router = APIRouter(prefix="/api/candidates", tags=["candidates"])
 
@@ -57,45 +59,8 @@ class CandidateUpdate(BaseModel):
     starred: Optional[bool] = None
 
 
-def candidate_to_dict(c: Candidate) -> dict:
-    display_id = f"C{c.id:03d}"
-    main_name = c.name or c.name_en or ""
-    display_name = f"{main_name} @{display_id}" if main_name else f"@{display_id}"
-    return {
-        "id": c.id,
-        "display_id": display_id,
-        "display_name": display_name,
-        "name": c.name,
-        "name_en": c.name_en,
-        "phone": c.phone,
-        "email": c.email,
-        "age": c.age,
-        "education": c.education,
-        "school": c.school,
-        "city": c.city,
-        "last_company": c.last_company,
-        "last_title": c.last_title,
-        "years_exp": c.years_exp,
-        "skill_tags": c.skill_tags or [],
-        "source": c.source,
-        "referred_by": c.referred_by,
-        "supplier_id": c.supplier_id,
-        "supplier_name": c.supplier.name if c.supplier else None,
-        "supplier_fee_rate": c.supplier.fee_rate if c.supplier else None,
-        "supplier_fee_guarantee_days": c.supplier.fee_guarantee_days if c.supplier else None,
-        "supplier_payment_notes": c.supplier.payment_notes if c.supplier else None,
-        "notes": c.notes,
-        "resume_path": c.resume_path,
-        "followup_status": c.followup_status,
-        "starred": bool(c.starred),
-        "blacklisted": bool(c.blacklisted),
-        "blacklist_reason": c.blacklist_reason,
-        "blacklist_note": c.blacklist_note,
-        "education_list": c.education_list or [],
-        "work_experience": c.work_experience or [],
-        "created_at": c.created_at.isoformat() if c.created_at else None,
-        "updated_at": c.updated_at.isoformat() if c.updated_at else None,
-    }
+def _candidate_out(c: Candidate) -> dict:
+    return CandidateOut.model_validate(c).model_dump()
 
 
 def _sync_legacy_fields(candidate: Candidate):
@@ -130,7 +95,7 @@ def create_candidate(data: CandidateCreate, db: Session = Depends(get_db)):
     db.add(HistoryEntry(candidate_id=candidate.id, event_type="created", detail="候选人档案创建"))
     db.commit()
     db.refresh(candidate)
-    return candidate_to_dict(candidate)
+    return _candidate_out(candidate)
 
 
 class DuplicateCheckRequest(BaseModel):
@@ -197,7 +162,7 @@ def list_candidates(
         candidates = [c for c in candidates if tag in (c.skill_tags or [])]
     result = []
     for c in candidates:
-        d = candidate_to_dict(c)
+        d = _candidate_out(c)
         d["active_links"] = [
             {"job_id": lnk.job_id, "job_title": lnk.job.title if lnk.job else None, "stage": lnk.stage}
             for lnk in c.job_links if not lnk.outcome
@@ -215,7 +180,7 @@ def get_candidate(candidate_id: int, db: Session = Depends(get_db)):
     c = db.query(Candidate).filter(Candidate.id == candidate_id, Candidate.deleted_at.is_(None)).first()
     if not c:
         raise HTTPException(status_code=404, detail="候选人不存在或已被合并")
-    result = candidate_to_dict(c)
+    result = _candidate_out(c)
     result["history"] = [
         {
             "id": h.id,
@@ -259,7 +224,7 @@ def update_candidate(candidate_id: int, data: CandidateUpdate, db: Session = Dep
     db.add(HistoryEntry(candidate_id=c.id, event_type="updated", detail="信息已更新"))
     db.commit()
     db.refresh(c)
-    return candidate_to_dict(c)
+    return _candidate_out(c)
 
 
 class BlacklistRequest(BaseModel):
@@ -272,17 +237,8 @@ def blacklist_candidate(candidate_id: int, data: BlacklistRequest, db: Session =
     c = db.query(Candidate).filter(Candidate.id == candidate_id, Candidate.deleted_at.is_(None)).first()
     if not c:
         raise HTTPException(status_code=404, detail="候选人不存在")
-    valid_reasons = {"简历造假", "背调不通过", "职业道德问题", "面试失约", "其他"}
-    if data.reason not in valid_reasons:
-        raise HTTPException(status_code=400, detail="无效的黑名单原因")
-    c.blacklisted = True
-    c.blacklist_reason = data.reason
-    c.blacklist_note = data.note
-    c.updated_at = datetime.utcnow()
-    db.add(HistoryEntry(candidate_id=c.id, event_type="blacklisted", detail=f"加入黑名单：{data.reason}"))
-    db.commit()
-    db.refresh(c)
-    return candidate_to_dict(c)
+    c = candidates_svc.blacklist_candidate(db, c, data.reason, data.note)
+    return _candidate_out(c)
 
 
 class UnblacklistRequest(BaseModel):
@@ -294,16 +250,8 @@ def unblacklist_candidate(candidate_id: int, data: UnblacklistRequest, db: Sessi
     c = db.query(Candidate).filter(Candidate.id == candidate_id, Candidate.deleted_at.is_(None)).first()
     if not c:
         raise HTTPException(status_code=404, detail="候选人不存在")
-    if not c.blacklisted:
-        raise HTTPException(status_code=400, detail="候选人未在黑名单中")
-    c.blacklisted = False
-    c.blacklist_reason = None
-    c.blacklist_note = None
-    c.updated_at = datetime.utcnow()
-    db.add(HistoryEntry(candidate_id=c.id, event_type="unblacklisted", detail=f"解除黑名单：{data.reason}"))
-    db.commit()
-    db.refresh(c)
-    return candidate_to_dict(c)
+    c = candidates_svc.unblacklist_candidate(db, c, data.reason)
+    return _candidate_out(c)
 
 
 @router.get("/{candidate_id}/last-application")

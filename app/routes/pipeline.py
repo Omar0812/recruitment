@@ -5,7 +5,9 @@ from typing import Optional
 from datetime import datetime
 
 from app.database import get_db
-from app.models import CandidateJobLink, Job, Candidate, HistoryEntry, ActivityRecord
+from app.models import CandidateJobLink, Job, Candidate
+from app.schemas import LinkOut
+from app.services import pipeline as pipeline_svc
 
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
 
@@ -23,7 +25,6 @@ class StageUpdate(BaseModel):
 class OutcomeUpdate(BaseModel):
     outcome: str  # rejected / withdrawn
     rejection_reason: Optional[str] = None
-    # job_closed is a valid rejection_reason value for withdrawn outcome
 
 
 class WithdrawUpdate(BaseModel):
@@ -34,63 +35,15 @@ class NotesUpdate(BaseModel):
     notes: str
 
 
-def link_to_dict(lnk: CandidateJobLink) -> dict:
-    return {
-        "id": lnk.id,
-        "candidate_id": lnk.candidate_id,
-        "job_id": lnk.job_id,
-        "candidate_name": lnk.candidate.name if lnk.candidate else None,
-        "blacklisted": bool(lnk.candidate.blacklisted) if lnk.candidate else False,
-        "stage": lnk.stage,
-        "state": lnk.state,
-        "notes": lnk.notes,
-        "outcome": lnk.outcome,
-        "rejection_reason": lnk.rejection_reason,
-        "created_at": lnk.created_at.isoformat() if lnk.created_at else None,
-        "updated_at": lnk.updated_at.isoformat() if lnk.updated_at else None,
-        "days_since_update": (datetime.utcnow() - lnk.updated_at).days if lnk.updated_at else None,
-    }
+class TransferJob(BaseModel):
+    new_job_id: int
+    keep_records: bool = False
 
 
 @router.post("/link")
 def link_candidate(data: LinkCreate, db: Session = Depends(get_db)):
-    job = db.query(Job).filter(Job.id == data.job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="岗位不存在")
-    candidate = db.query(Candidate).filter(Candidate.id == data.candidate_id).first()
-    if not candidate:
-        raise HTTPException(status_code=404, detail="候选人不存在")
-
-    # blacklist check
-    if candidate.blacklisted:
-        raise HTTPException(status_code=400, detail="候选人已列入黑名单，无法推进流程")
-
-    existing = db.query(CandidateJobLink).filter(
-        CandidateJobLink.candidate_id == data.candidate_id,
-        CandidateJobLink.outcome.is_(None),
-    ).first()
-    if existing:
-        current_job = existing.job.title if existing.job else f"岗位#{existing.job_id}"
-        raise HTTPException(status_code=400, detail=f"该候选人已在「{current_job}」流程中，请先结束再投递新岗位")
-
-    lnk = CandidateJobLink(candidate_id=data.candidate_id, job_id=data.job_id, stage="简历筛选", state="IN_PROGRESS")
-    db.add(lnk)
-    db.flush()
-    db.add(ActivityRecord(
-        link_id=lnk.id,
-        type="resume_review",
-        stage="简历筛选",
-        status="pending",
-    ))
-    db.add(HistoryEntry(
-        candidate_id=data.candidate_id,
-        job_id=data.job_id,
-        event_type="stage_change",
-        detail=f"加入岗位「{job.title}」",
-    ))
-    db.commit()
-    db.refresh(lnk)
-    return link_to_dict(lnk)
+    lnk = pipeline_svc.link_candidate(db, data.candidate_id, data.job_id)
+    return LinkOut.model_validate(lnk).model_dump()
 
 
 @router.patch("/link/{link_id}/stage")
@@ -103,25 +56,8 @@ def update_outcome(link_id: int, data: OutcomeUpdate, db: Session = Depends(get_
     lnk = db.query(CandidateJobLink).filter(CandidateJobLink.id == link_id).first()
     if not lnk:
         raise HTTPException(status_code=404, detail="关联不存在")
-    lnk.outcome = data.outcome
-    if data.outcome == "rejected":
-        lnk.state = "REJECTED"
-    elif data.outcome == "withdrawn":
-        lnk.state = "WITHDRAWN"
-    if data.rejection_reason:
-        lnk.rejection_reason = data.rejection_reason
-    lnk.updated_at = datetime.utcnow()
-    label = "淘汰" if data.outcome == "rejected" else "退出"
-    reason_str = f"（{data.rejection_reason}）" if data.rejection_reason else ""
-    db.add(HistoryEntry(
-        candidate_id=lnk.candidate_id,
-        job_id=lnk.job_id,
-        event_type="outcome",
-        detail=f"结果：{label}{reason_str}",
-    ))
-    db.commit()
-    db.refresh(lnk)
-    return link_to_dict(lnk)
+    lnk = pipeline_svc.resolve_outcome(db, lnk, data.outcome, data.rejection_reason)
+    return LinkOut.model_validate(lnk).model_dump()
 
 
 @router.patch("/link/{link_id}/withdraw")
@@ -132,21 +68,8 @@ def withdraw_candidate(link_id: int, data: WithdrawUpdate = WithdrawUpdate(), db
     ).first()
     if not lnk:
         raise HTTPException(status_code=404, detail="关联不存在")
-    lnk.outcome = "withdrawn"
-    lnk.state = "WITHDRAWN"
-    if data.reason:
-        lnk.rejection_reason = data.reason
-    lnk.updated_at = datetime.utcnow()
-    reason_str = f"（{data.reason}）" if data.reason else ""
-    db.add(HistoryEntry(
-        candidate_id=lnk.candidate_id,
-        job_id=lnk.job_id,
-        event_type="outcome",
-        detail=f"结果：候选人退出{reason_str}",
-    ))
-    db.commit()
-    db.refresh(lnk)
-    return link_to_dict(lnk)
+    lnk = pipeline_svc.resolve_outcome(db, lnk, "withdrawn", data.reason)
+    return LinkOut.model_validate(lnk).model_dump()
 
 
 @router.patch("/link/{link_id}/hire")
@@ -157,24 +80,8 @@ def hire_candidate(link_id: int, db: Session = Depends(get_db)):
     ).first()
     if not lnk:
         raise HTTPException(status_code=404, detail="关联不存在")
-    lnk.outcome = "hired"
-    lnk.state = "HIRED"
-    lnk.updated_at = datetime.utcnow()
-    job_title = lnk.job.title if lnk.job else f"岗位#{lnk.job_id}"
-    db.add(HistoryEntry(
-        candidate_id=lnk.candidate_id,
-        job_id=lnk.job_id,
-        event_type="outcome",
-        detail=f"结果：已入职「{job_title}」",
-    ))
-    db.commit()
-    db.refresh(lnk)
-    return link_to_dict(lnk)
-
-
-class TransferJob(BaseModel):
-    new_job_id: int
-    keep_records: bool = False
+    lnk = pipeline_svc.hire_candidate(db, lnk)
+    return LinkOut.model_validate(lnk).model_dump()
 
 
 @router.patch("/link/{link_id}/transfer")
@@ -185,43 +92,8 @@ def transfer_job(link_id: int, data: TransferJob, db: Session = Depends(get_db))
     ).first()
     if not lnk:
         raise HTTPException(status_code=404, detail="关联不存在")
-    new_job = db.query(Job).filter(Job.id == data.new_job_id).first()
-    if not new_job:
-        raise HTTPException(status_code=404, detail="目标岗位不存在")
-
-    # Close old link
-    lnk.outcome = "withdrawn"
-    lnk.state = "WITHDRAWN"
-    lnk.updated_at = datetime.utcnow()
-
-    # Create new link
-    new_lnk = CandidateJobLink(
-        candidate_id=lnk.candidate_id,
-        job_id=data.new_job_id,
-        stage="简历筛选",
-        state="IN_PROGRESS",
-    )
-    db.add(new_lnk)
-    db.flush()
-
-    db.add(ActivityRecord(
-        link_id=new_lnk.id,
-        type="resume_review",
-        stage="简历筛选",
-        status="completed",
-        conclusion="通过",
-    ))
-
-    db.add(HistoryEntry(
-        candidate_id=lnk.candidate_id,
-        job_id=data.new_job_id,
-        event_type="stage_change",
-        detail=f"转移至岗位「{new_job.title}」",
-    ))
-    db.commit()
-    db.refresh(new_lnk)
-    return link_to_dict(new_lnk)
-
+    new_lnk = pipeline_svc.transfer_job(db, lnk, data.new_job_id)
+    return LinkOut.model_validate(new_lnk).model_dump()
 
 
 @router.patch("/link/{link_id}/notes")
@@ -233,7 +105,7 @@ def update_notes(link_id: int, data: NotesUpdate, db: Session = Depends(get_db))
     lnk.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(lnk)
-    return link_to_dict(lnk)
+    return LinkOut.model_validate(lnk).model_dump()
 
 
 @router.get("/active")
@@ -295,31 +167,27 @@ def get_pipeline(job_id: int, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="岗位不存在")
     active_links = [lnk for lnk in job.candidate_links if lnk.outcome is None and (lnk.candidate is None or lnk.candidate.deleted_at is None)]
-    # Group by stage (derived from activity chain)
     pipeline = {}
     for lnk in active_links:
         stage = lnk.stage or "待处理"
         if stage not in pipeline:
             pipeline[stage] = []
-        pipeline[stage].append(link_to_dict(lnk))
+        pipeline[stage].append(LinkOut.model_validate(lnk).model_dump())
     stages = list(pipeline.keys())
     return {"stages": stages, "pipeline": pipeline, "unmatched": []}
 
 
 @router.get("/analytics")
 def get_analytics(db: Session = Depends(get_db)):
-    """返回数据分析所需的聚合数据"""
     all_links = db.query(CandidateJobLink).join(Candidate).filter(
         Candidate.deleted_at.is_(None)
     ).all()
 
-    # 各阶段人数（活跃）
     stage_counts = {}
     for lnk in all_links:
         if lnk.outcome is None and lnk.stage:
             stage_counts[lnk.stage] = stage_counts.get(lnk.stage, 0) + 1
 
-    # 岗位汇总
     job_stats = {}
     for lnk in all_links:
         jid = lnk.job_id
@@ -334,7 +202,6 @@ def get_analytics(db: Session = Depends(get_db)):
         elif lnk.outcome == "rejected":
             job_stats[jid]["rejected"] += 1
 
-    # 淘汰原因分布
     rejection_reasons = {}
     for lnk in all_links:
         if lnk.outcome == "rejected":
