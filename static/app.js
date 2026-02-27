@@ -333,6 +333,7 @@ function router() {
   if (hash.startsWith("#/jobs/edit/")) return renderJobForm(content, hash.split("/")[3]);
   if (/^#\/jobs\/\d+$/.test(hash)) return renderJobDetail(content, hash.split("/")[2]);
   if (hash === "#/jobs/new") return renderJobForm(content, null);
+  if (hash === "#/settings") return renderSettings(content);
   content.innerHTML = '<div class="empty-state">页面不存在</div>';
 }
 
@@ -548,6 +549,7 @@ async function uploadAndConfirm(file) {
         </div>
         <input id="f-source" placeholder="手动输入来源" style="display:none;margin-top:6px">
       </div>
+      <div class="form-group" id="f-referred-by-group" style="display:none"><label>内推人</label><input id="f-referred-by" placeholder="推荐人姓名"></div>
       <div class="form-group form-full"><label>投递岗位（可选）</label>
         <select id="f-job">
           <option value="">-- 暂不投递岗位 --</option>
@@ -595,23 +597,57 @@ async function uploadAndConfirm(file) {
   document.getElementById("add-edu-btn").onclick = () => eduContainer.appendChild(renderEduBlock());
   document.getElementById("add-work-btn").onclick = () => workContainer.appendChild(renderWorkBlock());
 
-  // Supplier dropdown: show/hide manual input
+  // Supplier dropdown: show/hide manual input + referred_by
   const fSupplier = document.getElementById("f-supplier");
   const fSource = document.getElementById("f-source");
-  fSupplier.onchange = () => { if (fSupplier.value === "__other__") fSource.classList.remove("hidden"); else fSource.classList.add("hidden"); };
+  const fReferredByGroup = document.getElementById("f-referred-by-group");
+  function updateSupplierUI() {
+    if (fSupplier.value === "__other__") fSource.style.display = "block"; else fSource.style.display = "none";
+    // show referred_by if selected supplier is type 内推
+    const selectedOpt = fSupplier.options[fSupplier.selectedIndex];
+    const isReferral = selectedOpt && selectedOpt.textContent.includes("内推");
+    fReferredByGroup.style.display = isReferral ? "" : "none";
+  }
+  fSupplier.onchange = updateSupplierUI;
 
   // Quick-add supplier
-  document.getElementById("f-add-supplier-btn").onclick = async () => {
-    const name = prompt("供应商名称：");
-    if (!name || !name.trim()) return;
-    const typeVal = prompt("类型（猎头/招聘平台/内推/其他）：") || "其他";
-    const newS = await api.post("/api/suppliers", { name: name.trim(), type: typeVal.trim() });
-    const opt = document.createElement("option");
-    opt.value = newS.id;
-    opt.textContent = newS.name;
-    fSupplier.insertBefore(opt, fSupplier.querySelector('option[value="__other__"]'));
-    fSupplier.value = newS.id;
-    fSource.classList.add("hidden");
+  document.getElementById("f-add-supplier-btn").onclick = () => {
+    const html = `
+      <div class="form-grid">
+        <div class="form-group form-full"><label>名称 *</label><input id="dlg-s-name" placeholder="供应商名称"></div>
+        <div class="form-group form-full"><label>类型</label>
+          <select id="dlg-s-type">
+            <option value="猎头">猎头</option>
+            <option value="招聘平台">招聘平台</option>
+            <option value="内推">内推</option>
+            <option value="其他" selected>其他</option>
+          </select>
+        </div>
+        <div class="form-group"><label>费率（选填）</label><input id="dlg-s-fee-rate" placeholder="如：20%"></div>
+        <div class="form-group"><label>保证期（天，选填）</label><input id="dlg-s-fee-days" type="number" placeholder="如：90"></div>
+        <div class="form-group form-full"><label>付款备注（选填）</label><input id="dlg-s-payment-notes" placeholder="如：入职后30天付款"></div>
+      </div>`;
+    openDialog("新增供应商", html, {
+      confirmText: "创建",
+      onConfirm: async () => {
+        const name = document.getElementById("dlg-s-name").value.trim();
+        if (!name) { showToast("请填写供应商名称", "error"); return; }
+        const newS = await api.post("/api/suppliers", {
+          name,
+          type: document.getElementById("dlg-s-type").value,
+          fee_rate: document.getElementById("dlg-s-fee-rate").value.trim() || null,
+          fee_guarantee_days: parseInt(document.getElementById("dlg-s-fee-days").value) || null,
+          payment_notes: document.getElementById("dlg-s-payment-notes").value.trim() || null,
+        });
+        const opt = document.createElement("option");
+        opt.value = newS.id;
+        opt.textContent = newS.name;
+        fSupplier.insertBefore(opt, fSupplier.querySelector('option[value="__other__"]'));
+        fSupplier.value = newS.id;
+        fSource.classList.add("hidden");
+        closeDialog();
+      },
+    });
   };
 
   // 查重：更新已有档案
@@ -680,6 +716,7 @@ async function uploadAndConfirm(file) {
       years_exp: parseFloat(years_exp) || null,
       supplier_id: (fSupplier.value && fSupplier.value !== "__other__") ? parseInt(fSupplier.value) : null,
       source: fSupplier.value === "__other__" ? (fSource.value.trim() || null) : null,
+      referred_by: document.getElementById("f-referred-by")?.value.trim() || null,
       notes: document.getElementById("f-notes").value.trim() || null,
       resume_path: document.getElementById("resume-path").value || null,
       education_list: eduList,
@@ -784,12 +821,16 @@ async function renderCandidateProfile(el, id) {
     <div class="page-header">
       <button class="btn btn-secondary btn-sm" onclick="history.back()">← 返回</button>
     </div>
+    ${c.blacklisted ? `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;margin-bottom:12px;color:#dc2626;font-size:14px">
+      ⚠ 黑名单候选人 — 原因：${c.blacklist_reason || "未填写"}${c.blacklist_note ? `（${c.blacklist_note}）` : ""}
+    </div>` : ""}
     <div class="card" style="margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div>
           <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
             <h1 style="margin:0;font-size:22px">${mainName} <span style="font-size:14px;color:#999;font-weight:400">@${displayId}</span></h1>
             ${c.name_en && c.name_en !== c.name ? `<span style="font-size:14px;color:#888">${c.name_en}</span>` : ""}
+            ${c.blacklisted ? `<span style="background:#fee2e2;color:#dc2626;font-size:11px;padding:2px 8px;border-radius:4px;font-weight:600">黑名单</span>` : ""}
           </div>
           <div style="margin-top:6px;font-size:14px;color:#555">
             ${firstWork.title ? `${firstWork.title}${firstWork.company ? " @ " + firstWork.company : ""}` : (c.last_title || c.last_company ? [c.last_title,c.last_company].filter(Boolean).join(" @ ") : "")}
@@ -798,6 +839,8 @@ async function renderCandidateProfile(el, id) {
           <div style="margin-top:4px;font-size:13px;color:#888">
             ${[c.phone, c.email, c.years_exp != null ? c.years_exp + "年经验" : null].filter(Boolean).join(" &nbsp;·&nbsp; ")}
           </div>
+          ${c.referred_by ? `<div style="margin-top:4px;font-size:13px;color:#888">内推人：${c.referred_by}</div>` : ""}
+          ${c.supplier_name ? `<div style="margin-top:4px;font-size:13px;color:#888">来源：${c.supplier_name}${c.supplier_fee_rate ? `&nbsp;·&nbsp;费率 ${c.supplier_fee_rate}` : ""}${c.supplier_fee_guarantee_days ? `&nbsp;·&nbsp;保证期 ${c.supplier_fee_guarantee_days}天` : ""}</div>` : (c.source ? `<div style="margin-top:4px;font-size:13px;color:#888">来源：${c.source}</div>` : "")}
           <div style="margin-top:8px;font-size:13px">
             ${latestActive
               ? `<span style="color:#555">当前流程：</span><span style="color:#1a1a2e;font-weight:600">${latestActive.job_title}</span> → <span class="tag" style="font-size:11px">${latestActive.stage||"-"}</span>`
@@ -806,9 +849,12 @@ async function renderCandidateProfile(el, id) {
                 : `<span style="color:#bbb">当前流程：暂无</span>`}
           </div>
         </div>
-        <div style="display:flex;gap:8px;align-items:flex-start;flex-shrink:0">
+        <div style="display:flex;gap:8px;align-items:flex-start;flex-shrink:0;flex-wrap:wrap">
           ${c.resume_path ? `<a href="/resumes/${c.resume_path.split('/').slice(-2).map(encodeURIComponent).join('/')}" target="_blank" class="btn btn-secondary btn-sm">下载简历</a>` : ""}
           <button class="btn btn-secondary btn-sm" id="edit-info-btn">编辑信息</button>
+          ${c.blacklisted
+            ? `<button class="btn btn-secondary btn-sm" id="unblacklist-btn" style="color:#dc2626;border-color:#fca5a5">解除黑名单</button>`
+            : `<button class="btn btn-secondary btn-sm" id="blacklist-btn" style="color:#dc2626">加入黑名单</button>`}
         </div>
       </div>
     </div>
@@ -931,6 +977,7 @@ async function renderCandidateProfile(el, id) {
           </div>
           <input id="e-source" value="${c.source || ""}" placeholder="手动输入来源" style="display:${!c.supplier_id && c.source ? "block" : "none"};margin-top:6px">
         </div>
+        <div class="form-group" id="e-referred-by-group" style="display:${c.source === "内推" || (c.supplier && c.supplier_name && c.supplier_name.includes("内推")) ? "" : "none"}"><label>内推人</label><input id="e-referred-by" value="${c.referred_by || ""}" placeholder="推荐人姓名"></div>
         <div class="form-group"><label>城市</label><input id="e-city" value="${c.city || ""}"></div>
       </div>
       <div style="margin-top:16px">
@@ -957,18 +1004,49 @@ async function renderCandidateProfile(el, id) {
     // Supplier dropdown logic
     const eSupplier = document.getElementById("e-supplier");
     const eSource = document.getElementById("e-source");
-    eSupplier.onchange = () => { if (eSupplier.value === "__other__") eSource.classList.remove("hidden"); else eSource.classList.add("hidden"); };
-    document.getElementById("e-add-supplier-btn").onclick = async () => {
-      const sName = prompt("供应商名称：");
-      if (!sName || !sName.trim()) return;
-      const sType = prompt("类型（猎头/招聘平台/内推/其他）：") || "其他";
-      const newS = await api.post("/api/suppliers", { name: sName.trim(), type: sType.trim() });
-      const opt = document.createElement("option");
-      opt.value = newS.id;
-      opt.textContent = newS.name;
-      eSupplier.insertBefore(opt, eSupplier.querySelector('option[value="__other__"]'));
-      eSupplier.value = newS.id;
-      eSource.classList.add("hidden");
+    const eReferredByGroup = document.getElementById("e-referred-by-group");
+    eSupplier.onchange = () => {
+      if (eSupplier.value === "__other__") eSource.style.display = "block"; else eSource.style.display = "none";
+      const selOpt = eSupplier.options[eSupplier.selectedIndex];
+      eReferredByGroup.style.display = (selOpt && selOpt.textContent.includes("内推")) ? "" : "none";
+    };
+    document.getElementById("e-add-supplier-btn").onclick = () => {
+      const html = `
+        <div class="form-grid">
+          <div class="form-group form-full"><label>名称 *</label><input id="dlg-s-name" placeholder="供应商名称"></div>
+          <div class="form-group form-full"><label>类型</label>
+            <select id="dlg-s-type">
+              <option value="猎头">猎头</option>
+              <option value="招聘平台">招聘平台</option>
+              <option value="内推">内推</option>
+              <option value="其他" selected>其他</option>
+            </select>
+          </div>
+          <div class="form-group"><label>费率（选填）</label><input id="dlg-s-fee-rate" placeholder="如：20%"></div>
+          <div class="form-group"><label>保证期（天，选填）</label><input id="dlg-s-fee-days" type="number" placeholder="如：90"></div>
+          <div class="form-group form-full"><label>付款备注（选填）</label><input id="dlg-s-payment-notes" placeholder="如：入职后30天付款"></div>
+        </div>`;
+      openDialog("新增供应商", html, {
+        confirmText: "创建",
+        onConfirm: async () => {
+          const sName = document.getElementById("dlg-s-name").value.trim();
+          if (!sName) { showToast("请填写供应商名称", "error"); return; }
+          const newS = await api.post("/api/suppliers", {
+            name: sName,
+            type: document.getElementById("dlg-s-type").value,
+            fee_rate: document.getElementById("dlg-s-fee-rate").value.trim() || null,
+            fee_guarantee_days: parseInt(document.getElementById("dlg-s-fee-days").value) || null,
+            payment_notes: document.getElementById("dlg-s-payment-notes").value.trim() || null,
+          });
+          const opt = document.createElement("option");
+          opt.value = newS.id;
+          opt.textContent = newS.name;
+          eSupplier.insertBefore(opt, eSupplier.querySelector('option[value="__other__"]'));
+          eSupplier.value = newS.id;
+          eSource.classList.add("hidden");
+          closeDialog();
+        },
+      });
     };
 
     overlay.classList.remove("hidden");
@@ -991,6 +1069,7 @@ async function renderCandidateProfile(el, id) {
         years_exp: parseFloat(years_exp) || null,
         supplier_id: (eSupplier.value && eSupplier.value !== "__other__") ? parseInt(eSupplier.value) : null,
         source: eSupplier.value === "__other__" ? (eSource.value.trim() || null) : null,
+        referred_by: document.getElementById("e-referred-by")?.value.trim() || null,
         city: document.getElementById("e-city").value || null,
         education_list: eduList,
         work_experience: workList,
@@ -1141,6 +1220,56 @@ async function renderCandidateProfile(el, id) {
     });
   }
 
+  }
+
+  // Blacklist / unblacklist handlers
+  const blacklistBtn = document.getElementById("blacklist-btn");
+  if (blacklistBtn) {
+    blacklistBtn.onclick = () => {
+      const REASONS = ["简历造假", "背调不通过", "职业道德问题", "面试失约", "其他"];
+      const html = `
+        <div class="form-group">
+          <label>原因</label>
+          <select id="bl-reason">${REASONS.map(r => `<option value="${r}">${r}</option>`).join("")}</select>
+        </div>
+        <div class="form-group">
+          <label>补充说明（选填）</label>
+          <input id="bl-note" placeholder="可选">
+        </div>`;
+      openDialog("加入黑名单", html, {
+        confirmText: "确认加入",
+        onConfirm: async () => {
+          const reason = document.getElementById("bl-reason").value;
+          const note = document.getElementById("bl-note").value.trim() || null;
+          await api.post(`/api/candidates/${id}/blacklist`, { reason, note });
+          closeDialog();
+          renderCandidateProfile(el, id);
+        }
+      });
+    };
+  }
+
+  const unblacklistBtn = document.getElementById("unblacklist-btn");
+  if (unblacklistBtn) {
+    unblacklistBtn.onclick = () => {
+      const html = `
+        <div class="form-group">
+          <label>解除原因（必填）</label>
+          <input id="ubl-reason" placeholder="请填写解除原因">
+        </div>`;
+      openDialog("解除黑名单", html, {
+        confirmText: "确认解除",
+        onConfirm: async () => {
+          const reason = document.getElementById("ubl-reason").value.trim();
+          if (!reason) { showToast("请填写解除原因", "error"); return; }
+          await api.delete(`/api/candidates/${id}/blacklist`, { reason });
+          closeDialog();
+          renderCandidateProfile(el, id);
+        }
+      });
+    };
+  }
+
   function openLinkJobOverlay() {
     api.get("/api/jobs").then(jobs => {
       const html = `
@@ -1189,7 +1318,7 @@ function isTailComplete(tail) {
 // ── Activity card renderer ────────────────────────────────────────────────────
 function renderActivityCard(activity, editable) {
   const a = activity;
-  const typeLabel = { resume_review: "简历筛选", interview: "面试", phone_screen: "电话初筛", note: "备注", offer: "Offer", stage_change: "阶段变更", onboard: "入职确认" };
+  const typeLabel = { resume_review: "简历筛选", interview: "面试", phone_screen: "电话初筛", note: "备注", offer: "Offer", stage_change: "阶段变更", onboard: "入职确认", background_check: "背调" };
 
   if (a.type === "stage_change") {
     return `<div class="activity-stage-change">→ 推进到 <strong>${a.to_stage || a.stage}</strong></div>`;
@@ -1213,8 +1342,23 @@ function renderActivityCard(activity, editable) {
   else if (a.type === "interview" && a.interview_time) metaParts.push(formatTime(a.interview_time));
   if (a.location) metaParts.push(`📍 ${a.location}`);
   if (a.type === "offer") {
-    if (a.salary) metaParts.push(`薪资：${a.salary}`);
+    const p = a.payload || {};
+    const monthlySalary = p.monthly_salary || a.monthly_salary;
+    const salaryMonths = p.salary_months || a.salary_months;
+    const otherCash = p.other_cash || a.other_cash;
+    if (monthlySalary) metaParts.push(`月薪 ¥${monthlySalary.toLocaleString()} × ${salaryMonths || 13}薪`);
+    else if (a.salary) metaParts.push(`薪资：${a.salary}`);
+    if (otherCash) metaParts.push(otherCash);
     if (a.start_date) metaParts.push(`入职：${a.start_date}`);
+  }
+  if (a.type === "background_check") {
+    const p = a.payload || {};
+    const conclusion = p.conclusion || a.conclusion;
+    const notes = p.notes || a.notes || a.comment;
+    const bgColor = conclusion === "通过" ? "#dcfce7" : conclusion === "不通过" ? "#fee2e2" : "#fef9c3";
+    const bgTextColor = conclusion === "通过" ? "#166534" : conclusion === "不通过" ? "#dc2626" : "#854d0e";
+    if (conclusion) metaParts.push(`<span style="background:${bgColor};color:${bgTextColor};padding:1px 6px;border-radius:4px;font-size:11px">${conclusion}</span>`);
+    if (notes) metaParts.push(notes);
   }
   if (a.type === "onboard") {
     if (a.start_date) metaParts.push(`入职日期：${a.start_date}`);
@@ -1319,19 +1463,30 @@ function getNoteFormData(container) {
 
 function renderOfferFormHTML(record) {
   const r = record || {};
+  const p = r.payload || {};
   const conclusionBtns = ["接受","拒绝","谈判中"].map(v =>
-    `<button type="button" class="iv-conclusion-btn${r.conclusion===v?" active":""}" data-v="${v}">${v}</button>`
+    `<button type="button" class="iv-conclusion-btn${(r.conclusion||p.conclusion)===v?" active":""}" data-v="${v}">${v}</button>`
   ).join("");
   return `
     <div class="iv-form-row">
-      <div><label>薪资（选填）</label><input class="ivf-salary" value="${r.salary||""}" placeholder="如：25k×14"></div>
+      <div><label>月薪（选填）</label><input class="ivf-monthly-salary" type="number" value="${p.monthly_salary||r.monthly_salary||""}" placeholder="如：30000"></div>
+      <div><label>薪资月数</label>
+        <select class="ivf-salary-months">
+          <option value="12" ${(p.salary_months||r.salary_months||13)==12?"selected":""}>12薪</option>
+          <option value="13" ${(p.salary_months||r.salary_months||13)==13?"selected":""}>13薪</option>
+          <option value="14" ${(p.salary_months||r.salary_months||13)==14?"selected":""}>14薪</option>
+        </select>
+      </div>
+    </div>
+    <div class="iv-form-row">
+      <div><label>其他现金（选填）</label><input class="ivf-other-cash" value="${p.other_cash||r.other_cash||""}" placeholder="如：20万期权、5万签字费"></div>
       <div><label>入职日期（选填）</label><input class="ivf-start-date" type="date" value="${r.start_date||""}"></div>
     </div>
     <label>备注</label>
-    <textarea class="ivf-comment" style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-height:50px;box-sizing:border-box;margin-bottom:8px">${r.comment||""}</textarea>
+    <textarea class="ivf-comment" style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-height:50px;box-sizing:border-box;margin-bottom:8px">${r.comment||p.comment||""}</textarea>
     <label>结论</label>
     <div style="display:flex;gap:8px;margin:4px 0 10px">${conclusionBtns}</div>
-    <input class="ivf-conclusion" type="hidden" value="${r.conclusion||""}">
+    <input class="ivf-conclusion" type="hidden" value="${r.conclusion||p.conclusion||""}">
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button type="button" class="btn btn-secondary btn-sm ivf-cancel">取消</button>
       <button type="button" class="btn btn-primary btn-sm ivf-save">保存</button>
@@ -1350,7 +1505,9 @@ function bindOfferFormInteractivity(container) {
 
 function getOfferFormData(container) {
   return {
-    salary: container.querySelector(".ivf-salary")?.value || null,
+    monthly_salary: parseInt(container.querySelector(".ivf-monthly-salary")?.value) || null,
+    salary_months: parseInt(container.querySelector(".ivf-salary-months")?.value) || 13,
+    other_cash: container.querySelector(".ivf-other-cash")?.value || null,
     start_date: container.querySelector(".ivf-start-date")?.value || null,
     comment: container.querySelector(".ivf-comment")?.value || null,
     conclusion: container.querySelector(".ivf-conclusion")?.value || null,
@@ -1373,6 +1530,32 @@ function renderOnboardFormHTML() {
 function getOnboardFormData(container) {
   return {
     start_date: container.querySelector(".ivf-start-date")?.value || null,
+    comment: container.querySelector(".ivf-comment")?.value || null,
+  };
+}
+
+function renderBgCheckFormHTML(record) {
+  const r = record || {};
+  const p = r.payload || {};
+  const cur = r.conclusion || p.conclusion || "";
+  const conclusionBtns = ["通过","有瑕疵","不通过"].map(v =>
+    `<button type="button" class="iv-conclusion-btn${cur===v?" active":""}" data-v="${v}">${v}</button>`
+  ).join("");
+  return `
+    <label>背调结论</label>
+    <div style="display:flex;gap:8px;margin:4px 0 10px">${conclusionBtns}</div>
+    <input class="ivf-conclusion" type="hidden" value="${cur}">
+    <label>备注（选填）</label>
+    <textarea class="ivf-comment" style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-height:60px;box-sizing:border-box;margin-bottom:8px" placeholder="背调详情...">${r.comment||p.comment||""}</textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn btn-secondary btn-sm ivf-cancel">取消</button>
+      <button type="button" class="btn btn-primary btn-sm ivf-save">保存</button>
+    </div>`;
+}
+
+function getBgCheckFormData(container) {
+  return {
+    conclusion: container.querySelector(".ivf-conclusion")?.value || null,
     comment: container.querySelector(".ivf-comment")?.value || null,
   };
 }
@@ -1696,7 +1879,7 @@ async function renderPipelineTracking(el) {
       if (i > 0) html += `<div class="pt-dot-line done"></div>`;
       let dotClass = "pt-dot";
       let symbol = "";
-      const typeLabel = { resume_review: "简历筛选", interview: "面试", phone_screen: "电话初筛", offer: "Offer", onboard: "入职确认" };
+      const typeLabel = { resume_review: "简历筛选", interview: "面试", phone_screen: "电话初筛", offer: "Offer", onboard: "入职确认", background_check: "背调" };
       let title = r.round || typeLabel[r.type] || r.type;
       if (r.status === "cancelled") {
         dotClass += " cancelled"; symbol = "✗"; title += " (已取消)";
@@ -1963,6 +2146,7 @@ async function renderPipelineTracking(el) {
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
             <span style="font-size:13px;color:#1e40af;font-weight:600">${primary.label}</span>
             <a href="javascript:void(0)" id="pt-alt-${l.id}" style="font-size:12px;color:#6b7280;text-decoration:underline">${secondary.label}</a>
+            <a href="javascript:void(0)" id="pt-bgcheck-${l.id}" style="font-size:12px;color:#6b7280;text-decoration:underline">安排背调</a>
           </div>
           <div id="pt-next-form-${l.id}"></div>
         </div>`;
@@ -1974,7 +2158,6 @@ async function renderPipelineTracking(el) {
       // Secondary text link switches form
       nextDiv.querySelector(`#pt-alt-${l.id}`).onclick = (e) => {
         e.preventDefault();
-        // Swap labels
         const altLink = nextDiv.querySelector(`#pt-alt-${l.id}`);
         const titleSpan = altLink.previousElementSibling;
         const curLabel = titleSpan.textContent;
@@ -1983,6 +2166,12 @@ async function renderPipelineTracking(el) {
         altLink.textContent = curLabel;
         const newType = curType === primary.type ? secondary.type : primary.type;
         showNextForm(newType, formDiv);
+      };
+
+      // Background check link
+      nextDiv.querySelector(`#pt-bgcheck-${l.id}`).onclick = (e) => {
+        e.preventDefault();
+        showNextForm("background_check", formDiv);
       };
     }
 
@@ -2023,6 +2212,35 @@ async function renderPipelineTracking(el) {
             return;
           }
           showToast("Offer 已保存", "success");
+          await refreshActivities();
+        };
+        formDiv.querySelector(".ivf-cancel").onclick = () => { formDiv.innerHTML = ""; };
+      } else if (type === "background_check") {
+        formDiv.innerHTML = renderBgCheckFormHTML();
+        formDiv.querySelectorAll(".iv-conclusion-btn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            formDiv.querySelectorAll(".iv-conclusion-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            formDiv.querySelector(".ivf-conclusion").value = btn.dataset.v;
+          });
+        });
+        formDiv.querySelector(".ivf-save").onclick = async () => {
+          const data = getBgCheckFormData(formDiv);
+          if (!data.conclusion) { showToast("请选择背调结论", "error"); return; }
+          await api.post("/api/activities", { link_id: l.id, type: "background_check", ...data });
+          if (data.conclusion === "不通过") {
+            showToast("背调不通过，建议淘汰候选人", "error");
+            await refreshActivities();
+            // Prompt to reject
+            if (confirm("背调不通过，是否立即淘汰该候选人？")) {
+              await api.patch(`/api/pipeline/link/${l.id}/outcome`, { outcome: "rejected", rejection_reason: "背调不通过" });
+              const idx = links.findIndex(lk => lk.id === l.id);
+              if (idx !== -1) links.splice(idx, 1);
+              renderContent();
+            }
+            return;
+          }
+          showToast("背调已记录", "success");
           await refreshActivities();
         };
         formDiv.querySelector(".ivf-cancel").onclick = () => { formDiv.innerHTML = ""; };
@@ -2124,6 +2342,7 @@ async function renderPipelineTracking(el) {
   function renderRow(l, showJob) {
     const days = l.days_since_update !== null ? (l.days_since_update === 0 ? "今天" : `${l.days_since_update}天前`) : "-";
     const starTag = l.starred ? `<span style="color:#f59e0b;font-size:13px;margin-right:2px">★</span>` : "";
+    const blackTag = l.blacklisted ? `<span style="background:#fee2e2;color:#dc2626;font-size:11px;padding:1px 5px;border-radius:4px;margin-left:4px">黑名单</span>` : "";
     const records = ivCache[l.id] || [];
     const progressHTML = renderProgressDots([], l.stage, records);
     const secondCell = showJob
@@ -2131,7 +2350,7 @@ async function renderPipelineTracking(el) {
       : `<td><span style="color:#555;font-size:13px;margin-right:8px">${l.job_title || "-"}</span>${progressHTML}</td>`;
     return `<tr class="pt-row" data-link-id="${l.id}">
       <td style="width:28px;color:#aaa;font-size:11px;padding-right:0">▶</td>
-      <td>${starTag}<a href="#/candidates/${l.candidate_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none" onclick="event.stopPropagation()">${l.candidate_name || "-"}</a></td>
+      <td>${starTag}<a href="#/candidates/${l.candidate_id}" style="font-weight:600;color:#1a1a2e;text-decoration:none" onclick="event.stopPropagation()">${l.candidate_name || "-"}</a>${blackTag}</td>
       ${secondCell}
       <td style="color:#888;font-size:13px;white-space:nowrap">${days}</td>
     </tr>`;
@@ -2245,6 +2464,9 @@ async function renderTalentPool(el) {
         <option value="__none__">未关联供应商</option>
       </select>
       <button class="btn btn-secondary" onclick="openDedupPanel()">查重</button>
+      <label style="font-size:14px;color:#666;cursor:pointer;white-space:nowrap">
+        <input type="checkbox" id="tp-show-blacklisted" style="margin-right:4px">显示黑名单
+      </label>
     </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div id="tp-table"><span class="spinner" style="margin:24px"></span></div>
@@ -2257,11 +2479,13 @@ async function renderTalentPool(el) {
   const loadTalent = async () => {
     const q = document.getElementById("tp-search")?.value || "";
     const sourceVal = document.getElementById("tp-source")?.value || "";
+    const showBlacklisted = document.getElementById("tp-show-blacklisted")?.checked || false;
 
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (sourceVal && sourceVal !== "__none__") params.set("source", "");  // we filter client-side for supplier
     if (starredOnly) params.set("starred", "true");
+    if (showBlacklisted) params.set("show_blacklisted", "true");
 
     let candidates = await api.get(`/api/candidates${params.toString() ? "?" + params.toString() : ""}`);
     // Client-side supplier filter
@@ -2309,6 +2533,7 @@ async function renderTalentPool(el) {
         const starBtn = `<button class="tp-star-btn" data-id="${c.id}" data-starred="${c.starred ? '1' : '0'}" style="background:none;border:none;cursor:pointer;font-size:16px;padding:0 4px;color:${c.starred ? '#f59e0b' : '#ccc'}" title="${c.starred ? '取消星标' : '标记星标'}">${c.starred ? '★' : '☆'}</button>`;
         return `<tr>
           <td style="display:flex;align-items:center;gap:4px">${starBtn}<a href="#/candidates/${c.id}" style="font-weight:600;color:#1a1a2e;text-decoration:none">${c.name || c.name_en || "?"}</a>
+            ${c.blacklisted ? `<span style="background:#fee2e2;color:#dc2626;font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600;margin-left:4px">黑名单</span>` : ""}
             ${c.last_title ? `<div style="font-size:12px;color:#888">${c.last_title}${c.last_company ? " @ " + c.last_company : ""}</div>` : ""}
           </td>
           <td>${tags || "-"}</td>
@@ -2367,6 +2592,7 @@ async function renderTalentPool(el) {
   let timer;
   document.getElementById("tp-search").oninput = () => { clearTimeout(timer); timer = setTimeout(loadTalent, 300); };
   document.getElementById("tp-source").onchange = loadTalent;
+  document.getElementById("tp-show-blacklisted").onchange = loadTalent;
   document.getElementById("tp-starred-btn").onclick = () => {
     starredOnly = !starredOnly;
     _talentStarredOnly = starredOnly;
@@ -2399,28 +2625,69 @@ async function openDedupPanel() {
     return;
   }
 
-  content.innerHTML = pairs.map((pair, idx) => `
-    <div class="dedup-pair" id="dedup-pair-${idx}" style="border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:16px">
-      <div style="font-size:12px;color:#888;margin-bottom:10px">重复原因：${pair.reason}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        ${[pair.a, pair.b].map(c => `
-          <label style="border:2px solid #e5e7eb;border-radius:8px;padding:12px;cursor:pointer;display:block">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-              <input type="radio" name="dedup-primary-${idx}" value="${c.id}" style="accent-color:#4f46e5">
-              <span style="font-weight:600">${c.name || "-"}</span>
-              <span style="font-size:12px;color:#888">${c.display_id}</span>
-            </div>
-            <div style="font-size:12px;color:#555;line-height:1.6">
-              ${c.phone ? `📱 ${c.phone}<br>` : ""}
-              ${c.email ? `✉️ ${c.email}<br>` : ""}
-              ${c.last_title ? `💼 ${c.last_title}${c.last_company ? " @ " + c.last_company : ""}` : ""}
-            </div>
-          </label>`).join("")}
-      </div>
+  // Sort: blacklisted pairs first, then exact matches, then fuzzy
+  const sorted = [...pairs].sort((a, b) => {
+    const aBlack = (a.a.is_blacklisted || a.b.is_blacklisted) ? 0 : 1;
+    const bBlack = (b.a.is_blacklisted || b.b.is_blacklisted) ? 0 : 1;
+    if (aBlack !== bBlack) return aBlack - bBlack;
+    const aExact = a.match_type === "exact" ? 0 : 1;
+    const bExact = b.match_type === "exact" ? 0 : 1;
+    return aExact - bExact;
+  });
+
+  function renderDedupCandidate(c) {
+    const app = c.last_application;
+    let appHtml = "";
+    if (app) {
+      const outcome = app.outcome === "rejected" ? "淘汰" : app.outcome === "withdrawn" ? "退出" : app.outcome === "hired" ? "入职" : "进行中";
+      const daysAgo = app.days_ago != null ? `${app.days_ago}天前` : "";
+      appHtml = `<div style="margin-top:6px;padding:6px 8px;background:#f9fafb;border-radius:6px;font-size:11px;color:#555;line-height:1.6">
+        <span style="color:#374151;font-weight:500">上次：</span>${app.job_title || "未知岗位"} · ${app.final_stage || ""} · ${outcome}${daysAgo ? " · " + daysAgo : ""}
+        ${app.last_interview_summary ? `<br><span style="color:#6b7280">${app.last_interview_summary}</span>` : ""}
+      </div>`;
+    }
+    const blackTag = c.is_blacklisted
+      ? `<span style="background:#fee2e2;color:#dc2626;font-size:11px;padding:1px 6px;border-radius:4px;margin-left:4px">黑名单${c.blacklist_reason ? "·" + c.blacklist_reason : ""}</span>`
+      : "";
+    return `
+      <label style="border:2px solid ${c.is_blacklisted ? "#fca5a5" : "#e5e7eb"};border-radius:8px;padding:12px;cursor:pointer;display:block;background:${c.is_blacklisted ? "#fff5f5" : ""}">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+          <input type="radio" name="dedup-primary-PAIRIDX" value="${c.id}" style="accent-color:#4f46e5">
+          <span style="font-weight:600">${c.name || "-"}</span>
+          <span style="font-size:12px;color:#888">${c.display_id}</span>
+          ${blackTag}
+        </div>
+        <div style="font-size:12px;color:#555;line-height:1.6">
+          ${c.phone ? `📱 ${c.phone}<br>` : ""}
+          ${c.email ? `✉️ ${c.email}<br>` : ""}
+          ${c.last_title ? `💼 ${c.last_title}${c.last_company ? " @ " + c.last_company : ""}` : ""}
+        </div>
+        ${appHtml}
+      </label>`;
+  }
+
+  content.innerHTML = sorted.map((pair, idx) => {
+    const isExact = pair.match_type === "exact";
+    const hasBlacklisted = pair.a.is_blacklisted || pair.b.is_blacklisted;
+    const borderColor = hasBlacklisted ? "#fca5a5" : isExact ? "#c7d2fe" : "#e5e7eb";
+    const reasonColor = isExact ? "#4338ca" : "#6b7280";
+    const matchBadge = isExact
+      ? `<span style="background:#e0e7ff;color:#4338ca;font-size:11px;padding:1px 6px;border-radius:4px;margin-left:6px">精确匹配</span>`
+      : `<span style="background:#f3f4f6;color:#6b7280;font-size:11px;padding:1px 6px;border-radius:4px;margin-left:6px">模糊匹配</span>`;
+    const blackBanner = hasBlacklisted
+      ? `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:12px;color:#dc2626;font-weight:500">⚠️ 该候选人在黑名单中，合并前请确认</div>`
+      : "";
+    const candidateHtml = [pair.a, pair.b].map(c => renderDedupCandidate(c).replace(/name="dedup-primary-PAIRIDX"/g, `name="dedup-primary-${idx}"`)).join("");
+    return `
+    <div class="dedup-pair" id="dedup-pair-${idx}" style="border:1px solid ${borderColor};border-radius:10px;padding:16px;margin-bottom:16px">
+      ${blackBanner}
+      <div style="font-size:12px;color:${reasonColor};margin-bottom:10px">重复原因：${pair.reason}${matchBadge}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${candidateHtml}</div>
       <div style="margin-top:12px;text-align:right">
         <button class="btn btn-primary btn-sm" onclick="mergeCandidate(${idx}, ${pair.a.id}, ${pair.b.id})">合并</button>
       </div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 
 async function mergeCandidate(pairIdx, idA, idB) {
@@ -2564,7 +2831,7 @@ async function renderJobList(el) {
     const priorityStyle = { "高": "priority-high", "中": "priority-mid", "低": "priority-low" };
 
     tableEl.innerHTML = `<table class="table">
-      <thead><tr><th>职位名称</th><th>城市/部门/类型/属性</th><th>优先级</th><th>状态</th><th>候选人进展</th><th>操作</th></tr></thead>
+      <thead><tr><th>职位名称</th><th>城市/部门/类型/属性</th><th>优先级</th><th>状态</th><th>候选人进展</th><th>入职进度</th><th>操作</th></tr></thead>
       <tbody>${jobs.map(j => {
         const num = String(j.id).padStart(3, "0");
         const info = [j.city, j.department, j.job_category, j.employment_type].filter(Boolean).join(" · ");
@@ -2573,6 +2840,10 @@ async function renderJobList(el) {
         const priorityTag = j.priority ? `<span class="priority-tag ${priorityStyle[j.priority] || ""}">${j.priority}</span>` : "-";
         const statusLabel = j.status === "open" ? "招聘中" : j.status === "paused" ? "暂停" : "已关闭";
         const statusStyle = j.status === "open" ? "" : "background:#f0f0f0;color:#999";
+        const hiredCount = j.hired_count || 0;
+        const headcount = j.headcount || 1;
+        const hiredFull = hiredCount >= headcount;
+        const hiredProgress = `<span style="color:${hiredFull ? "#166534" : "#555"}">${hiredCount}/${headcount}${hiredFull ? " ✓" : ""}</span>`;
         return `
         <tr>
           <td>
@@ -2583,12 +2854,14 @@ async function renderJobList(el) {
           <td>${priorityTag}</td>
           <td><span class="tag" style="${statusStyle}">${statusLabel}</span></td>
           <td class="job-progress">${progress}</td>
+          <td>${hiredProgress}</td>
           <td>
-            <div style="display:flex;gap:6px">
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
               <a href="#/jobs/edit/${j.id}" class="btn btn-secondary btn-sm">编辑</a>
+              <button class="btn btn-secondary btn-sm copy-job-btn" data-job-id="${j.id}">复制</button>
               ${j.status !== "closed"
                 ? `<button class="btn btn-danger btn-sm close-job-btn" data-job-id="${j.id}" data-active-count="${j.active_count}">关闭</button>`
-                : `<button class="btn btn-secondary btn-sm reopen-job-btn" data-job-id="${j.id}">重新打开</button>`}
+                : `<button class="btn btn-secondary btn-sm reopen-job-btn" data-job-id="${j.id}">重新激活</button>`}
             </div>
           </td>
         </tr>`;
@@ -2601,26 +2874,20 @@ async function renderJobList(el) {
         const activeCount = parseInt(btn.dataset.activeCount) || 0;
         if (activeCount === 0) {
           if (!confirm("确认关闭该岗位？关闭后不再显示在招聘中列表。")) return;
-          await api.patch(`/api/jobs/${jobId}`, { status: "closed" });
+          await api.post(`/api/jobs/${jobId}/close`, { bulk: false });
           loadJobs();
         } else {
           const html = `
             <p style="color:var(--c-text-secondary);font-size:14px;margin-bottom:16px">该岗位还有 <strong>${activeCount}</strong> 名候选人在流程中，请选择处理方式：</p>
             <div style="display:flex;flex-direction:column;gap:8px">
-              <button id="dlg-bulk-reject-btn" class="btn btn-danger" style="width:100%">批量淘汰并关闭（此操作不可撤销）</button>
-              <button id="dlg-close-only-btn" class="btn btn-secondary" style="width:100%">仅关闭岗位（保留流程记录）</button>
+              <button id="dlg-bulk-reject-btn" class="btn btn-danger" style="width:100%">一键全部退出（原因：岗位关闭）</button>
               <button id="dlg-cancel-close-btn" class="btn btn-secondary" style="width:100%;color:var(--c-text-muted)">取消</button>
             </div>`;
           openDialog("关闭岗位", html, {
             onOpen: () => {
               document.getElementById("dlg-bulk-reject-btn").onclick = async () => {
                 closeDialog();
-                await api.patch(`/api/jobs/${jobId}`, { status: "closed", bulk_reject: true });
-                loadJobs();
-              };
-              document.getElementById("dlg-close-only-btn").onclick = async () => {
-                closeDialog();
-                await api.patch(`/api/jobs/${jobId}`, { status: "closed" });
+                await api.post(`/api/jobs/${jobId}/close`, { bulk: true });
                 loadJobs();
               };
               document.getElementById("dlg-cancel-close-btn").onclick = closeDialog;
@@ -2630,9 +2897,26 @@ async function renderJobList(el) {
       };
     });
 
+    tableEl.querySelectorAll(".copy-job-btn").forEach(btn => {
+      btn.onclick = async () => {
+        const jobId = btn.dataset.jobId;
+        const job = await api.get(`/api/jobs/${jobId}`);
+        const year = new Date().getFullYear();
+        const prefill = {
+          ...job,
+          title: `${job.title}（${year}）`,
+          status: "open",
+          target_onboard_date: "",
+          headcount: job.headcount || 1,
+        };
+        const content = document.getElementById("page-content");
+        renderJobForm(content, null, prefill);
+      };
+    });
+
     tableEl.querySelectorAll(".reopen-job-btn").forEach(btn => {
       btn.onclick = async () => {
-        await api.patch(`/api/jobs/${btn.dataset.jobId}`, { status: "open" });
+        await api.post(`/api/jobs/${btn.dataset.jobId}/reopen`, {});
         loadJobs();
       };
     });
@@ -2654,8 +2938,8 @@ async function renderJobList(el) {
 }
 
 // ── Job Form ──────────────────────────────────────────────────────────────────
-async function renderJobForm(el, id) {
-  let job = { title: "", department: "", jd: "", persona: "", status: "open", hr_owner: "", city: "", job_category: "", employment_type: "", priority: "" };
+async function renderJobForm(el, id, prefill = null) {
+  let job = prefill || { title: "", department: "", jd: "", persona: "", status: "open", hr_owner: "", city: "", job_category: "", employment_type: "", priority: "", headcount: 1, target_onboard_date: "" };
   if (id) job = await api.get(`/api/jobs/${id}`);
 
   el.innerHTML = `
@@ -2701,6 +2985,8 @@ async function renderJobForm(el, id) {
             <option value="低" ${job.priority === "低" ? "selected" : ""}>低</option>
           </select>
         </div>
+        <div class="form-group"><label>招聘人数</label><input id="j-headcount" type="number" min="1" value="${job.headcount || 1}"></div>
+        <div class="form-group"><label>目标入职日期</label><input id="j-target-date" type="date" value="${job.target_onboard_date || ""}"></div>
         <div class="form-group form-full"><label>JD（职位描述）</label><textarea id="j-jd" style="min-height:120px">${job.jd || ""}</textarea></div>
         <div class="form-group form-full"><label>候选人画像</label><textarea id="j-persona" style="min-height:80px">${job.persona || ""}</textarea></div>
       </div>
@@ -2725,6 +3011,8 @@ async function renderJobForm(el, id) {
       priority: document.getElementById("j-priority").value || null,
       jd: document.getElementById("j-jd").value || null,
       persona: document.getElementById("j-persona").value || null,
+      headcount: parseInt(document.getElementById("j-headcount").value) || 1,
+      target_onboard_date: document.getElementById("j-target-date").value || null,
     };
     if (id) {
       await api.patch(`/api/jobs/${id}`, data);
@@ -2903,21 +3191,77 @@ async function renderAnalytics(el) {
         <div style="margin-top:12px;font-size:13px;color:#888">共 ${rejTotal === 1 && !Object.keys(rejMap).length ? 0 : Object.values(rejMap).reduce((a,b)=>a+b,0)} 次淘汰</div>
       </div>
 
-      <!-- 岗位汇总 -->
-      <div class="card" style="overflow:auto">
-        <h2 style="margin-bottom:16px">岗位汇总</h2>
-        ${jobStats.length ? `<table class="table" style="margin:0">
-          <thead><tr><th>岗位</th><th>总投递</th><th>进行中</th><th>已淘汰</th></tr></thead>
-          <tbody>${jobStats.sort((a,b) => b.total - a.total).map(j => `
-            <tr>
-              <td style="font-size:13px">${j.title}</td>
-              <td style="text-align:center">${j.total}</td>
-              <td style="text-align:center;color:#166534">${j.active}</td>
-              <td style="text-align:center;color:#dc2626">${j.rejected}</td>
-            </tr>`).join("")}
-          </tbody>
-        </table>` : '<div class="empty-state">暂无岗位数据</div>'}
-      </div>
-
     </div>`;
+}
+
+// ── Settings Page ─────────────────────────────────────────────────────────────
+async function renderSettings(el) {
+  const cfg = await api.get("/api/settings/ai");
+  el.innerHTML = `
+    <div class="page-header"><h1>设置</h1></div>
+    <div class="card" style="max-width:560px">
+      <h2 style="margin-bottom:20px;font-size:16px">AI 配置</h2>
+      <div class="form-grid">
+        <div class="form-group form-full">
+          <label>Provider</label>
+          <select id="s-provider">
+            <option value="openai-compatible" ${cfg.provider === "openai-compatible" ? "selected" : ""}>OpenAI Compatible</option>
+            <option value="openai" ${cfg.provider === "openai" ? "selected" : ""}>OpenAI</option>
+            <option value="anthropic" ${cfg.provider === "anthropic" ? "selected" : ""}>Anthropic</option>
+          </select>
+        </div>
+        <div class="form-group form-full">
+          <label>Base URL</label>
+          <input id="s-base-url" value="${cfg.base_url || ""}" placeholder="https://api.openai.com/v1">
+        </div>
+        <div class="form-group form-full">
+          <label>Model</label>
+          <input id="s-model" value="${cfg.model || ""}" placeholder="gpt-4o">
+        </div>
+        <div class="form-group form-full">
+          <label>API Key</label>
+          <div style="display:flex;gap:8px">
+            <input id="s-api-key" type="password" value="" placeholder="${cfg.api_key_masked || "sk-..."}" style="flex:1">
+            <button class="btn btn-secondary btn-sm" id="s-toggle-key" type="button">显示</button>
+          </div>
+          <div style="font-size:12px;color:#888;margin-top:4px">当前：${cfg.api_key_masked || "未设置"}（留空则不修改）</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button class="btn btn-primary" id="s-save">保存</button>
+        <button class="btn btn-secondary" id="s-verify">验证连接</button>
+      </div>
+      <div id="s-verify-result" style="margin-top:12px;font-size:14px"></div>
+    </div>`;
+
+  document.getElementById("s-toggle-key").onclick = () => {
+    const inp = document.getElementById("s-api-key");
+    const btn = document.getElementById("s-toggle-key");
+    if (inp.type === "password") { inp.type = "text"; btn.textContent = "隐藏"; }
+    else { inp.type = "password"; btn.textContent = "显示"; }
+  };
+
+  const saveBtn = document.getElementById("s-save");
+  saveBtn.onclick = () => withLoading(saveBtn, async () => {
+    const patch = {
+      provider: document.getElementById("s-provider").value,
+      base_url: document.getElementById("s-base-url").value.trim() || null,
+      model: document.getElementById("s-model").value.trim() || null,
+    };
+    const key = document.getElementById("s-api-key").value.trim();
+    if (key) patch.api_key = key;
+    await api.patch("/api/settings/ai", patch);
+    showToast("配置已保存");
+  });
+
+  const verifyBtn = document.getElementById("s-verify");
+  verifyBtn.onclick = () => withLoading(verifyBtn, async () => {
+    const resultEl = document.getElementById("s-verify-result");
+    try {
+      const res = await api.post("/api/settings/ai/verify", {});
+      resultEl.innerHTML = `<span style="color:#166534">✓ ${res.message}</span>`;
+    } catch (e) {
+      resultEl.innerHTML = `<span style="color:#dc2626">✗ ${e.message || "连接失败"}</span>`;
+    }
+  });
 }

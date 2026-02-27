@@ -16,6 +16,9 @@ class SupplierCreate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     notes: Optional[str] = None
+    fee_rate: Optional[str] = None
+    fee_guarantee_days: Optional[int] = None
+    payment_notes: Optional[str] = None
 
 
 class SupplierUpdate(BaseModel):
@@ -25,6 +28,9 @@ class SupplierUpdate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     notes: Optional[str] = None
+    fee_rate: Optional[str] = None
+    fee_guarantee_days: Optional[int] = None
+    payment_notes: Optional[str] = None
 
 
 def supplier_to_dict(s: Supplier) -> dict:
@@ -36,6 +42,9 @@ def supplier_to_dict(s: Supplier) -> dict:
         "phone": s.phone,
         "email": s.email,
         "notes": s.notes,
+        "fee_rate": s.fee_rate,
+        "fee_guarantee_days": s.fee_guarantee_days,
+        "payment_notes": s.payment_notes,
         "created_at": s.created_at.isoformat() if s.created_at else None,
     }
 
@@ -57,6 +66,9 @@ def create_supplier(data: SupplierCreate, db: Session = Depends(get_db)):
         phone=data.phone,
         email=data.email,
         notes=data.notes,
+        fee_rate=data.fee_rate,
+        fee_guarantee_days=data.fee_guarantee_days,
+        payment_notes=data.payment_notes,
     )
     db.add(s)
     db.commit()

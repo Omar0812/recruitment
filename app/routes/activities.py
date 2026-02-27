@@ -9,7 +9,7 @@ from app.models import ActivityRecord, CandidateJobLink
 
 router = APIRouter(prefix="/api/activities", tags=["activities"])
 
-CHAIN_TYPES = {"resume_review", "interview", "offer", "onboard"}
+CHAIN_TYPES = {"resume_review", "interview", "offer", "onboard", "background_check"}
 # phone_screen is retired but kept in STAGE_LABEL for historical data display
 _RETIRED_CHAIN_TYPES = {"phone_screen"}
 
@@ -65,6 +65,10 @@ class ActivityCreate(BaseModel):
     start_date: Optional[str] = None
     from_stage: Optional[str] = None
     to_stage: Optional[str] = None
+    # offer compensation fields
+    monthly_salary: Optional[int] = None
+    salary_months: Optional[int] = None
+    other_cash: Optional[str] = None
 
 
 class ActivityUpdate(BaseModel):
@@ -82,7 +86,47 @@ class ActivityUpdate(BaseModel):
     start_date: Optional[str] = None
 
 
+def _get(r: ActivityRecord, field: str, default=None):
+    """Read from payload first, fallback to sparse column."""
+    p = r.payload or {}
+    if field in p:
+        return p[field]
+    return getattr(r, field, default)
+
+
+def _build_payload(data: "ActivityCreate", conclusion, status) -> dict:
+    """Build type-specific payload dict."""
+    t = data.type
+    if t == "interview":
+        return {
+            "round": data.round,
+            "score": data.score,
+            "conclusion": conclusion,
+            "scheduled_at": data.scheduled_at.isoformat() if data.scheduled_at else None,
+            "location": data.location,
+            "status": status,
+            "comment": data.comment,
+        }
+    if t == "offer":
+        return {
+            "monthly_salary": data.monthly_salary,
+            "salary_months": data.salary_months,
+            "other_cash": data.other_cash,
+            "salary": data.salary,
+            "start_date": data.start_date,
+            "conclusion": conclusion,
+            "comment": data.comment,
+        }
+    if t == "background_check":
+        return {
+            "conclusion": conclusion,
+            "notes": data.comment,
+        }
+    return {"conclusion": conclusion, "comment": data.comment}
+
+
 def record_to_dict(r: ActivityRecord) -> dict:
+    p = r.payload or {}
     return {
         "id": r.id,
         "link_id": r.link_id,
@@ -90,19 +134,26 @@ def record_to_dict(r: ActivityRecord) -> dict:
         "stage": r.stage,
         "created_at": r.created_at.isoformat() if r.created_at else None,
         "actor": r.actor,
-        "comment": r.comment,
-        "conclusion": r.conclusion,
+        "comment": p.get("comment") if "comment" in p else r.comment,
+        "conclusion": p.get("conclusion") if "conclusion" in p else r.conclusion,
         "rejection_reason": r.rejection_reason,
-        "round": r.round,
+        "round": p.get("round") if "round" in p else r.round,
         "interview_time": r.interview_time,
-        "scheduled_at": r.scheduled_at.isoformat() if r.scheduled_at else None,
-        "location": r.location,
-        "status": r.status,
-        "score": r.score,
-        "salary": r.salary,
-        "start_date": r.start_date,
+        "scheduled_at": p.get("scheduled_at") if "scheduled_at" in p else (r.scheduled_at.isoformat() if r.scheduled_at else None),
+        "location": p.get("location") if "location" in p else r.location,
+        "status": p.get("status") if "status" in p else r.status,
+        "score": p.get("score") if "score" in p else r.score,
+        "salary": p.get("salary") if "salary" in p else r.salary,
+        "start_date": p.get("start_date") if "start_date" in p else r.start_date,
         "from_stage": r.from_stage,
         "to_stage": r.to_stage,
+        # offer compensation
+        "monthly_salary": p.get("monthly_salary"),
+        "salary_months": p.get("salary_months"),
+        "other_cash": p.get("other_cash"),
+        # background_check
+        "notes": p.get("notes"),
+        "payload": p,
     }
 
 
@@ -125,6 +176,13 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
     # phone_screen is retired — reject new creation
     if data.type == "phone_screen":
         raise HTTPException(status_code=400, detail="phone_screen 类型已废弃，请使用 interview")
+
+    # background_check: validate conclusion
+    if data.type == "background_check":
+        if not data.conclusion:
+            raise HTTPException(status_code=400, detail="背调结论为必填项")
+        if data.conclusion not in ("通过", "不通过", "有瑕疵"):
+            raise HTTPException(status_code=400, detail="背调结论须为：通过 / 不通过 / 有瑕疵")
 
     # 链尾约束：note 类型跳过校验
     all_chain_types = CHAIN_TYPES | _RETIRED_CHAIN_TYPES
@@ -150,6 +208,8 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
             stage = data.round or "面试"
         elif data.type == "offer":
             stage = "Offer"
+        elif data.type == "background_check":
+            stage = "背调"
         elif data.type == "onboard":
             stage = "入职确认"
         else:
@@ -180,6 +240,7 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
         start_date=data.start_date,
         from_stage=data.from_stage,
         to_stage=data.to_stage,
+        payload=_build_payload(data, conclusion, status),
     )
 
     # embedding_text 预填（interview 类型）

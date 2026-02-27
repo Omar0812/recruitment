@@ -1,15 +1,48 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from typing import Optional
 from datetime import datetime
 
 from app.database import get_db
-from app.models import Candidate, CandidateJobLink, InterviewRecord, HistoryEntry
+from app.models import Candidate, CandidateJobLink, InterviewRecord, HistoryEntry, ActivityRecord
 
 router = APIRouter(prefix="/api/candidates/dedup", tags=["dedup"])
 
 
-def _candidate_brief(c: Candidate) -> dict:
+def _last_application_context(c: Candidate, db: Session) -> Optional[dict]:
+    link = (
+        db.query(CandidateJobLink)
+        .filter(CandidateJobLink.candidate_id == c.id)
+        .order_by(CandidateJobLink.updated_at.desc())
+        .first()
+    )
+    if not link:
+        return None
+    last_interview = (
+        db.query(ActivityRecord)
+        .filter(ActivityRecord.link_id == link.id, ActivityRecord.type == "interview")
+        .order_by(ActivityRecord.id.desc())
+        .first()
+    )
+    summary = None
+    if last_interview:
+        p = last_interview.payload or {}
+        comment = p.get("comment") or last_interview.comment or ""
+        conclusion = p.get("conclusion") or last_interview.conclusion or ""
+        summary = f"{conclusion}：{comment[:50]}" if comment else conclusion
+    days_ago = (datetime.utcnow() - link.updated_at).days if link.updated_at else None
+    return {
+        "job_title": link.job.title if link.job else None,
+        "final_stage": link.stage,
+        "outcome": link.outcome,
+        "rejection_reason": link.rejection_reason,
+        "days_ago": days_ago,
+        "last_interview_summary": summary,
+    }
+
+
+def _candidate_brief(c: Candidate, db: Session) -> dict:
     return {
         "id": c.id,
         "display_id": f"C{c.id:03d}",
@@ -18,6 +51,9 @@ def _candidate_brief(c: Candidate) -> dict:
         "email": c.email,
         "last_company": c.last_company,
         "last_title": c.last_title,
+        "is_blacklisted": bool(c.blacklisted),
+        "blacklist_reason": c.blacklist_reason,
+        "last_application": _last_application_context(c, db),
     }
 
 
@@ -28,7 +64,7 @@ def scan_duplicates(db: Session = Depends(get_db)):
     pairs = []
     seen = set()
 
-    # 按手机号分组
+    # 按手机号分组（精确匹配）
     phone_map = {}
     for c in candidates:
         if c.phone:
@@ -40,9 +76,9 @@ def scan_duplicates(db: Session = Depends(get_db)):
                 key = (min(group[i].id, group[j].id), max(group[i].id, group[j].id))
                 if key not in seen:
                     seen.add(key)
-                    pairs.append({"reason": "手机号相同", "a": _candidate_brief(group[i]), "b": _candidate_brief(group[j])})
+                    pairs.append({"reason": "手机号相同", "match_type": "exact", "a": _candidate_brief(group[i], db), "b": _candidate_brief(group[j], db)})
 
-    # 按邮箱分组
+    # 按邮箱分组（精确匹配）
     email_map = {}
     for c in candidates:
         if c.email:
@@ -54,9 +90,9 @@ def scan_duplicates(db: Session = Depends(get_db)):
                 key = (min(group[i].id, group[j].id), max(group[i].id, group[j].id))
                 if key not in seen:
                     seen.add(key)
-                    pairs.append({"reason": "邮箱相同", "a": _candidate_brief(group[i]), "b": _candidate_brief(group[j])})
+                    pairs.append({"reason": "邮箱相同", "match_type": "exact", "a": _candidate_brief(group[i], db), "b": _candidate_brief(group[j], db)})
 
-    # 姓名相同且无手机/邮箱
+    # 姓名相同且无手机/邮箱（模糊匹配）
     name_map = {}
     for c in candidates:
         if c.name and not c.phone and not c.email:
@@ -68,7 +104,7 @@ def scan_duplicates(db: Session = Depends(get_db)):
                 key = (min(group[i].id, group[j].id), max(group[i].id, group[j].id))
                 if key not in seen:
                     seen.add(key)
-                    pairs.append({"reason": "姓名相同且无联系方式", "a": _candidate_brief(group[i]), "b": _candidate_brief(group[j])})
+                    pairs.append({"reason": "姓名相同且无联系方式", "match_type": "fuzzy", "a": _candidate_brief(group[i], db), "b": _candidate_brief(group[j], db)})
 
     return {"pairs": pairs}
 

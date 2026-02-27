@@ -22,7 +22,7 @@ export const api = {
     if (!r.ok) return r.json().then(d => { showToast(d.detail || "保存失败", "error"); throw new Error(d.detail); });
     return r.json();
   }),
-  delete: (url) => fetch(url, { method: "DELETE" }).then(r => {
+  delete: (url, data) => fetch(url, { method: "DELETE", ...(data ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) } : {}) }).then(r => {
     if (!r.ok) return r.json().then(d => { showToast(d.detail || "删除失败", "error"); throw new Error(d.detail); });
     return r.json();
   }),

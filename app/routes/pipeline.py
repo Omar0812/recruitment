@@ -23,6 +23,7 @@ class StageUpdate(BaseModel):
 class OutcomeUpdate(BaseModel):
     outcome: str  # rejected / withdrawn
     rejection_reason: Optional[str] = None
+    # job_closed is a valid rejection_reason value for withdrawn outcome
 
 
 class WithdrawUpdate(BaseModel):
@@ -39,6 +40,7 @@ def link_to_dict(lnk: CandidateJobLink) -> dict:
         "candidate_id": lnk.candidate_id,
         "job_id": lnk.job_id,
         "candidate_name": lnk.candidate.name if lnk.candidate else None,
+        "blacklisted": bool(lnk.candidate.blacklisted) if lnk.candidate else False,
         "stage": lnk.stage,
         "state": lnk.state,
         "notes": lnk.notes,
@@ -58,6 +60,10 @@ def link_candidate(data: LinkCreate, db: Session = Depends(get_db)):
     candidate = db.query(Candidate).filter(Candidate.id == data.candidate_id).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="候选人不存在")
+
+    # blacklist check
+    if candidate.blacklisted:
+        raise HTTPException(status_code=400, detail="候选人已列入黑名单，无法推进流程")
 
     existing = db.query(CandidateJobLink).filter(
         CandidateJobLink.candidate_id == data.candidate_id,

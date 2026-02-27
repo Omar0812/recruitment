@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Float, func
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Float, Boolean, Date, func
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
@@ -23,8 +23,12 @@ class Candidate(Base):
     work_experience = Column(JSON, default=list)  # [{company, title, period}]
     skill_tags = Column(JSON, default=list)
     source = Column(String)
+    referred_by = Column(String, nullable=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
     notes = Column(Text)
+    blacklisted = Column(Boolean, default=False, nullable=False)
+    blacklist_reason = Column(String, nullable=True)
+    blacklist_note = Column(Text, nullable=True)
     resume_path = Column(String)
     followup_status = Column(String)   # 待跟进 / 已联系 / 暂不考虑
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -48,6 +52,9 @@ class Supplier(Base):
     phone = Column(String)
     email = Column(String)
     notes = Column(Text)
+    fee_rate = Column(Text, nullable=True)
+    fee_guarantee_days = Column(Integer, nullable=True)
+    payment_notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     candidates = relationship("Candidate", back_populates="supplier")
@@ -67,6 +74,8 @@ class Job(Base):
     job_category = Column(String)      # 研发 / 销售 / 市场 / 职能
     employment_type = Column(String)   # 全职 / 实习 / 顾问
     priority = Column(String)          # 高 / 中 / 低
+    headcount = Column(Integer, default=1, nullable=False)
+    target_onboard_date = Column(Date, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -160,5 +169,8 @@ class ActivityRecord(Base):
 
     # memory layer 预留
     embedding_text = Column(Text, nullable=True)
+
+    # payload (type-specific data, replaces sparse columns over time)
+    payload = Column(JSON, nullable=True)
 
     link = relationship("CandidateJobLink", back_populates="activity_records")

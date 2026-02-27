@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app.database import engine
 from app import models
-from app.routes import candidates, resume, jobs, pipeline, dashboard, activities, dedup, suppliers, context, insights
+from app.routes import candidates, resume, jobs, pipeline, dashboard, activities, dedup, suppliers, context, insights, settings
 
 models.Base.metadata.create_all(bind=engine)
 Path("data/resumes").mkdir(parents=True, exist_ok=True)
@@ -165,6 +165,7 @@ app.include_router(dedup.router)
 app.include_router(suppliers.router)
 app.include_router(context.router)
 app.include_router(insights.router)
+app.include_router(settings.router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/resumes", StaticFiles(directory="data/resumes"), name="resumes")
