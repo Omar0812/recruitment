@@ -320,10 +320,10 @@ function router() {
 
   const hash = location.hash || "#/";
   document.querySelectorAll(".nav-item").forEach(el => {
-    el.classList.toggle("active", hash.startsWith("#/" + el.dataset.page) || (hash === "#/" && el.dataset.page === "dashboard"));
+    el.classList.toggle("active", hash.startsWith("#/" + el.dataset.page) || (hash === "#/" && el.dataset.page === "today"));
   });
   const content = document.getElementById("page-content");
-  if (hash === "#/" || hash === "#/dashboard") return renderDashboard(content);
+  if (hash === "#/" || hash === "#/dashboard" || hash === "#/today") return renderTodayDashboard(content);
   if (hash === "#/candidates" || hash === "#/pipeline" || hash.startsWith("#/pipeline?")) return renderPipelineTracking(content);
   if (hash === "#/hired") return renderHiredPage(content);
   if (hash.startsWith("#/candidates/")) return renderCandidateProfile(content, hash.split("/")[2]);
@@ -2436,17 +2436,17 @@ async function renderPipelineTracking(el) {
 
   renderContent();
 
-  // Auto-expand from URL parameter (e.g. #/pipeline?expand=42)
-  const expandMatch = location.hash.match(/[?&]expand=(\d+)/);
-  if (expandMatch) {
-    const expandLinkId = parseInt(expandMatch[1]);
-    const targetRow = contentEl.querySelector(`.pt-row[data-link-id="${expandLinkId}"]`);
-    if (targetRow) {
-      targetRow.click();
-      setTimeout(() => targetRow.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
-    }
-    // Clean up URL parameter
-    history.replaceState(null, "", location.pathname + "#/pipeline");
+  // Auto-expand from URL parameter (e.g. #/pipeline?link=42)
+  const linkMatch = location.hash.match(/[?&]link=(\d+)/);
+  if (linkMatch) {
+    const expandLinkId = parseInt(linkMatch[1]);
+    setTimeout(() => {
+      const targetRow = contentEl.querySelector(`.pt-row[data-link-id="${expandLinkId}"]`);
+      if (targetRow) {
+        targetRow.click();
+        setTimeout(() => targetRow.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
+      }
+    }, 200);
   }
 }
 
@@ -3264,4 +3264,393 @@ async function renderSettings(el) {
       resultEl.innerHTML = `<span style="color:#dc2626">✗ ${e.message || "连接失败"}</span>`;
     }
   });
+}
+
+// ── Today Dashboard ───────────────────────────────────────────────────────────
+async function renderTodayDashboard(el) {
+  el.innerHTML = `
+    <div class="page-header">
+      <h1>今日待办</h1>
+      <span style="color:#888;font-size:14px">${new Date().toLocaleDateString('zh-CN', {year:'numeric',month:'long',day:'numeric',weekday:'long'})}</span>
+    </div>
+    <div id="today-content"><span class="spinner"></span></div>`;
+
+  const data = await api.get("/api/insights/today");
+  const contentEl = document.getElementById("today-content");
+  if (!contentEl) return;
+
+  const { today, week_summary } = data;
+
+  // Group by priority
+  const p0 = today.filter(t => t.priority === "P0");
+  const p1 = today.filter(t => t.priority === "P1");
+  const p2 = today.filter(t => t.priority === "P2");
+
+  let html = "";
+
+  // Week summary (collapsible)
+  html += `
+    <div class="today-week-summary collapsed" id="week-summary">
+      <div class="today-week-toggle" id="week-toggle">
+        <span>▶ 本周概览</span>
+        <span style="color:#888;font-size:13px">进行中${week_summary.in_progress}人 · 本周面试${week_summary.interviews_this_week}场</span>
+      </div>
+      <div class="today-week-body" style="display:none">
+        <div class="today-week-stats">
+          <div><strong>${week_summary.in_progress}</strong><span>进行中</span></div>
+          <div><strong>${week_summary.interviews_this_week}</strong><span>本周面试</span></div>
+          <div><strong>${week_summary.offers_pending}</strong><span>待跟进 Offer</span></div>
+          <div><strong>${week_summary.hired_this_week}</strong><span>本周入职</span></div>
+        </div>
+      </div>
+    </div>`;
+
+  if (p0.length === 0 && p1.length === 0 && p2.length === 0) {
+    html += `<div class="today-empty">
+      <div style="font-size:48px;margin-bottom:8px">✓</div>
+      <div style="font-size:16px;color:#166534">今天没有待办事项</div>
+      <div style="font-size:14px;color:#888;margin-top:4px">所有流程进展顺利</div>
+    </div>`;
+    contentEl.innerHTML = html;
+    document.getElementById("week-toggle").onclick = toggleWeekSummary;
+    return;
+  }
+
+  // P0: 今天
+  if (p0.length > 0) {
+    html += `<div class="today-section"><h2 class="today-section-title p0">今天</h2>`;
+    p0.forEach(item => {
+      if (item.type === "interview_today") {
+        html += renderInterviewCard(item);
+      } else if (item.type === "offer_waiting") {
+        html += renderOfferWaitingCard(item);
+      }
+    });
+    html += `</div>`;
+  }
+
+  // P1: 需要跟进
+  if (p1.length > 0) {
+    html += `<div class="today-section"><h2 class="today-section-title p1">需要跟进</h2>`;
+    p1.forEach(item => {
+      if (item.type === "interview_feedback_missing") {
+        html += renderFeedbackMissingCard(item);
+      } else if (item.type === "pipeline_stale") {
+        html += renderStaleCard(item);
+      }
+    });
+    html += `</div>`;
+  }
+
+  // P2: 待处理
+  if (p2.length > 0) {
+    html += `<div class="today-section"><h2 class="today-section-title p2">待处理</h2>`;
+    p2.forEach(item => {
+      if (item.type === "unassigned_candidates") {
+        html += renderUnassignedCard(item);
+      }
+    });
+    html += `</div>`;
+  }
+
+  contentEl.innerHTML = html;
+
+  // Bind events
+  document.getElementById("week-toggle").onclick = toggleWeekSummary;
+  bindTodayCardEvents();
+}
+
+function toggleWeekSummary() {
+  const summary = document.getElementById("week-summary");
+  const body = summary.querySelector(".today-week-body");
+  const toggle = summary.querySelector(".today-week-toggle span:first-child");
+  if (summary.classList.contains("collapsed")) {
+    summary.classList.remove("collapsed");
+    body.style.display = "block";
+    toggle.textContent = "▼ 本周概览";
+  } else {
+    summary.classList.add("collapsed");
+    body.style.display = "none";
+    toggle.textContent = "▶ 本周概览";
+  }
+}
+
+function renderInterviewCard(item) {
+  const time = item.scheduled_at ? formatTime(item.scheduled_at).split(' ')[1] : '';
+  const lastIv = item.last_interview_summary;
+  return `
+    <div class="today-card" data-type="interview" data-link-id="${item.link_id}" data-activity-id="${item.activity_id}">
+      <div class="today-card-header">
+        <span>📅 ${time}  ${item.candidate_name} · ${item.stage} · ${item.job_title}</span>
+        <button class="today-card-toggle">▼</button>
+      </div>
+      <div class="today-card-meta">${item.interviewer ? '面试官：'+item.interviewer : ''} ${item.location ? '· '+item.location : ''}</div>
+      <div class="today-card-body" style="display:none">
+        <div class="today-card-section">
+          <strong>候选人信息</strong>
+          <div style="color:#666;font-size:13px;margin-top:4px">暂无简历摘要</div>
+        </div>
+        ${lastIv ? `
+        <div class="today-card-section">
+          <strong>上轮面评（${lastIv.round || '面试'}）</strong>
+          <div style="margin-top:4px">
+            ${lastIv.score ? '⭐'.repeat(lastIv.score) : ''} ${lastIv.conclusion || ''}
+            ${lastIv.comment ? '<div style="color:#666;font-size:13px;margin-top:2px">"'+lastIv.comment+'"</div>' : ''}
+          </div>
+        </div>` : '<div class="today-card-section" style="color:#888;font-size:13px">暂无上轮面评</div>'}
+        <div class="today-card-actions">
+          <button class="btn btn-secondary btn-sm today-cancel-iv">取消面试</button>
+          <button class="btn btn-primary btn-sm today-goto-pipeline">去填面评 →</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderOfferWaitingCard(item) {
+  const salary = item.monthly_salary ? `月薪¥${item.monthly_salary.toLocaleString()}` : '';
+  const date = item.offer_created_at ? formatTime(item.offer_created_at).split(' ')[0] : '';
+  return `
+    <div class="today-card" data-type="offer" data-link-id="${item.link_id}" data-activity-id="${item.activity_id}">
+      <div class="today-card-header">
+        <span>⏰ ${item.candidate_name} · Offer 已发出 ${item.offer_days} 天</span>
+      </div>
+      <div class="today-card-meta">${item.job_title} ${salary ? '· '+salary : ''} ${date ? '· 发出于 '+date : ''}</div>
+      <div class="today-card-body" style="display:none">
+        <label style="font-size:13px;color:#555;margin-bottom:4px;display:block">结论</label>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <button class="today-offer-conclusion-btn" data-v="接受">接受</button>
+          <button class="today-offer-conclusion-btn" data-v="拒绝">拒绝</button>
+          <button class="today-offer-conclusion-btn" data-v="继续谈判">继续谈判</button>
+        </div>
+        <input type="hidden" class="today-offer-conclusion" value="">
+        <label style="font-size:13px;color:#555;margin-bottom:4px;display:block">备注</label>
+        <textarea class="today-offer-comment" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-height:50px;box-sizing:border-box;margin-bottom:8px"></textarea>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-secondary btn-sm today-offer-cancel">取消</button>
+          <button class="btn btn-primary btn-sm today-offer-save">保存</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderFeedbackMissingCard(item) {
+  const date = item.scheduled_at ? formatTime(item.scheduled_at) : '';
+  return `
+    <div class="today-card" data-type="feedback" data-link-id="${item.link_id}" data-activity-id="${item.activity_id}">
+      <div class="today-card-header">
+        <span>📝 ${item.candidate_name} · ${item.stage}结束 ${item.days_missing} 天，面评未填</span>
+        <button class="today-card-toggle">▼</button>
+      </div>
+      <div class="today-card-meta">${item.job_title} · ${date}</div>
+      <div class="today-card-body" style="display:none">
+        <label style="font-size:13px;color:#555;margin-bottom:4px;display:block">面试官</label>
+        <input class="today-fb-actor" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:13px;margin-bottom:8px;box-sizing:border-box">
+        <label style="font-size:13px;color:#555;margin-bottom:4px;display:block">面评</label>
+        <textarea class="today-fb-comment" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-height:80px;box-sizing:border-box;margin-bottom:8px"></textarea>
+        <label style="font-size:13px;color:#555;margin-bottom:4px;display:block">评分</label>
+        <div style="display:flex;gap:4px;margin-bottom:8px">
+          ${[1,2,3,4,5].map(n => `<button class="today-fb-score-btn" data-score="${n}">★</button>`).join('')}
+        </div>
+        <input type="hidden" class="today-fb-score" value="">
+        <label style="font-size:13px;color:#555;margin-bottom:4px;display:block">结论</label>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <button class="today-fb-conclusion-btn" data-v="通过">通过</button>
+          <button class="today-fb-conclusion-btn" data-v="待定">待定</button>
+          <button class="today-fb-conclusion-btn" data-v="淘汰">淘汰</button>
+        </div>
+        <input type="hidden" class="today-fb-conclusion" value="">
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-secondary btn-sm today-fb-cancel">取消</button>
+          <button class="btn btn-primary btn-sm today-fb-save">保存</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderStaleCard(item) {
+  const date = item.last_updated ? formatTime(item.last_updated).split(' ')[0] : '';
+  return `
+    <div class="today-card" data-type="stale" data-link-id="${item.link_id}">
+      <div class="today-card-header">
+        <span>🕐 ${item.candidate_name} · ${item.stage} · 停滞 ${item.days_stale} 天</span>
+      </div>
+      <div class="today-card-meta">${item.job_title} · 最后操作 ${date}</div>
+      <div class="today-card-actions" style="margin-top:8px">
+        <button class="btn btn-primary btn-sm today-goto-pipeline">去处理 →</button>
+      </div>
+    </div>`;
+}
+
+function renderUnassignedCard(item) {
+  const count = item.candidates.length;
+  return `
+    <div class="today-card" data-type="unassigned">
+      <div class="today-card-header">
+        <span>👤 ${count} 位候选人建档后未分配岗位</span>
+        <button class="today-card-toggle">▼</button>
+      </div>
+      <div class="today-card-body" style="display:none">
+        ${item.candidates.map(c => {
+          const date = c.created_at ? formatTime(c.created_at).split(' ')[0] : '';
+          return `<div class="today-unassigned-row" data-cid="${c.id}">
+            <span>${c.name} · ${date} 建档</span>
+            <button class="btn btn-primary btn-sm today-assign-btn" data-cid="${c.id}">分配岗位</button>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+function bindTodayCardEvents() {
+  // Toggle expand/collapse
+  document.querySelectorAll(".today-card-toggle").forEach(btn => {
+    btn.onclick = () => {
+      const card = btn.closest(".today-card");
+      const body = card.querySelector(".today-card-body");
+      const isExpanded = body.style.display !== "none";
+      if (isExpanded) {
+        body.style.display = "none";
+        btn.textContent = "▼";
+      } else {
+        body.style.display = "block";
+        btn.textContent = "▲";
+      }
+    };
+  });
+
+  // Interview card: goto pipeline
+  document.querySelectorAll(".today-goto-pipeline").forEach(btn => {
+    btn.onclick = () => {
+      const card = btn.closest(".today-card");
+      const linkId = card.dataset.linkId;
+      location.hash = `#/pipeline?link=${linkId}`;
+    };
+  });
+
+  // Interview card: cancel
+  document.querySelectorAll(".today-cancel-iv").forEach(btn => {
+    btn.onclick = async () => {
+      const card = btn.closest(".today-card");
+      const activityId = card.dataset.activityId;
+      if (!confirm("确认取消面试？")) return;
+      await api.patch(`/api/activities/${activityId}`, { status: "cancelled" });
+      markCardComplete(card);
+    };
+  });
+
+  // Offer card: expand form
+  document.querySelectorAll(".today-card[data-type='offer'] .today-card-header").forEach(header => {
+    header.onclick = () => {
+      const card = header.closest(".today-card");
+      const body = card.querySelector(".today-card-body");
+      body.style.display = body.style.display === "none" ? "block" : "none";
+    };
+  });
+
+  // Offer card: conclusion buttons
+  document.querySelectorAll(".today-offer-conclusion-btn").forEach(btn => {
+    btn.onclick = () => {
+      const card = btn.closest(".today-card");
+      card.querySelectorAll(".today-offer-conclusion-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      card.querySelector(".today-offer-conclusion").value = btn.dataset.v;
+    };
+  });
+
+  // Offer card: save
+  document.querySelectorAll(".today-offer-save").forEach(btn => {
+    btn.onclick = async () => {
+      const card = btn.closest(".today-card");
+      const conclusion = card.querySelector(".today-offer-conclusion").value;
+      const comment = card.querySelector(".today-offer-comment").value.trim();
+      if (!conclusion) { showToast("请选择结论", "error"); return; }
+      const activityId = card.dataset.activityId;
+      await api.patch(`/api/activities/${activityId}`, { conclusion, comment });
+      markCardComplete(card);
+    };
+  });
+
+  // Offer card: cancel
+  document.querySelectorAll(".today-offer-cancel").forEach(btn => {
+    btn.onclick = () => {
+      const card = btn.closest(".today-card");
+      card.querySelector(".today-card-body").style.display = "none";
+    };
+  });
+
+  // Feedback card: score buttons
+  document.querySelectorAll(".today-fb-score-btn").forEach(btn => {
+    btn.onclick = () => {
+      const card = btn.closest(".today-card");
+      const score = parseInt(btn.dataset.score);
+      card.querySelector(".today-fb-score").value = score;
+      card.querySelectorAll(".today-fb-score-btn").forEach((b, i) => {
+        b.classList.toggle("active", i < score);
+      });
+    };
+  });
+
+  // Feedback card: conclusion buttons
+  document.querySelectorAll(".today-fb-conclusion-btn").forEach(btn => {
+    btn.onclick = () => {
+      const card = btn.closest(".today-card");
+      card.querySelectorAll(".today-fb-conclusion-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      card.querySelector(".today-fb-conclusion").value = btn.dataset.v;
+    };
+  });
+
+  // Feedback card: save
+  document.querySelectorAll(".today-fb-save").forEach(btn => {
+    btn.onclick = async () => {
+      const card = btn.closest(".today-card");
+      const actor = card.querySelector(".today-fb-actor").value.trim();
+      const comment = card.querySelector(".today-fb-comment").value.trim();
+      const score = parseInt(card.querySelector(".today-fb-score").value);
+      const conclusion = card.querySelector(".today-fb-conclusion").value;
+      if (!conclusion) { showToast("请选择结论", "error"); return; }
+      const activityId = card.dataset.activityId;
+      await api.patch(`/api/activities/${activityId}`, { actor, comment, score, conclusion, status: "completed" });
+      markCardComplete(card);
+    };
+  });
+
+  // Feedback card: cancel
+  document.querySelectorAll(".today-fb-cancel").forEach(btn => {
+    btn.onclick = () => {
+      const card = btn.closest(".today-card");
+      card.querySelector(".today-card-body").style.display = "none";
+    };
+  });
+
+  // Unassigned card: assign button
+  document.querySelectorAll(".today-assign-btn").forEach(btn => {
+    btn.onclick = async () => {
+      const cid = parseInt(btn.dataset.cid);
+      const jobs = await api.get("/api/jobs");
+      const html = `
+        <select id="today-assign-job" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px">
+          ${jobs.map(j => `<option value="${j.id}">${j.title}</option>`).join('')}
+        </select>`;
+      openDialog("分配岗位", html, {
+        confirmText: "确认",
+        onConfirm: async () => {
+          const jobId = parseInt(document.getElementById("today-assign-job").value);
+          await api.post("/api/pipeline/link", { candidate_id: cid, job_id: jobId });
+          closeDialog();
+          const row = btn.closest(".today-unassigned-row");
+          row.style.opacity = "0";
+          setTimeout(() => row.remove(), 300);
+          showToast("已分配岗位");
+        }
+      });
+    };
+  });
+}
+
+function markCardComplete(card) {
+  card.innerHTML = `<div class="today-card-complete">✓ 已完成</div>`;
+  card.style.transition = "opacity 1.5s";
+  setTimeout(() => { card.style.opacity = "0"; }, 100);
+  setTimeout(() => card.remove(), 1600);
 }
