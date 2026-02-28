@@ -33,17 +33,21 @@ def _mask_key(key: str) -> str:
 @router.get("/ai")
 def get_ai_settings():
     cfg = _read_config()
+    base_url = cfg.get("base_url", "")
     return {
         "provider": cfg.get("provider", ""),
-        "base_url": cfg.get("base_url", ""),
+        "base_url": base_url,
+        "api_base": base_url,
         "model": cfg.get("model", ""),
         "api_key_masked": _mask_key(cfg.get("api_key", "")),
+        "api_key": "",
     }
 
 
 class AISettingsUpdate(BaseModel):
     provider: Optional[str] = None
     base_url: Optional[str] = None
+    api_base: Optional[str] = None
     model: Optional[str] = None
     api_key: Optional[str] = None
 
@@ -53,14 +57,23 @@ def update_ai_settings(data: AISettingsUpdate):
     cfg = _read_config()
     if data.provider is not None:
         cfg["provider"] = data.provider
-    if data.base_url is not None:
-        cfg["base_url"] = data.base_url
+    base_url = data.base_url if data.base_url is not None else data.api_base
+    if base_url is not None:
+        cfg["base_url"] = base_url
     if data.model is not None:
         cfg["model"] = data.model
     if data.api_key is not None:
         cfg["api_key"] = data.api_key
     _write_config(cfg)
     return {"ok": True}
+
+
+class AIVerifyRequest(BaseModel):
+    provider: Optional[str] = None
+    base_url: Optional[str] = None
+    api_base: Optional[str] = None
+    model: Optional[str] = None
+    api_key: Optional[str] = None
 
 
 @router.get("/email")
@@ -143,11 +156,12 @@ def verify_email_connection():
 
 
 @router.post("/ai/verify")
-def verify_ai_connection():
+def verify_ai_connection(data: Optional[AIVerifyRequest] = None):
     cfg = _read_config()
-    api_key = cfg.get("api_key", "")
-    base_url = cfg.get("base_url", "")
-    model = cfg.get("model", "")
+    body = data.model_dump(exclude_none=True) if data is not None else {}
+    api_key = body.get("api_key", cfg.get("api_key", ""))
+    base_url = body.get("base_url", body.get("api_base", cfg.get("base_url", "")))
+    model = body.get("model", cfg.get("model", ""))
     if not api_key or not base_url or not model:
         raise HTTPException(status_code=400, detail="AI 配置不完整，请先填写所有字段")
     try:

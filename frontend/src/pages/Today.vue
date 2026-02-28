@@ -296,6 +296,10 @@ async function saveOfferConclusion() {
 }
 
 function goToPipeline(item) {
+  if (item?.link_id) {
+    router.push({ path: '/pipeline', query: { link_id: String(item.link_id) } })
+    return
+  }
   router.push('/pipeline')
 }
 

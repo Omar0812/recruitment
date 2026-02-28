@@ -4,7 +4,6 @@ export const pipelineApi = {
   getActive: () => api.get('/pipeline/active'),
   getHired: () => api.get('/pipeline/hired'),
   link: (data) => api.post('/pipeline/link', data),
-  updateLink: (linkId, data) => api.patch(`/pipeline/link/${linkId}`, data),
   withdraw: (linkId, data) => api.patch(`/pipeline/link/${linkId}/withdraw`, data),
   reject: (linkId, data) => api.patch(`/pipeline/link/${linkId}/outcome`, { outcome: 'rejected', rejection_reason: data?.reason }),
   hire: (linkId) => api.patch(`/pipeline/link/${linkId}/hire`),

@@ -10,7 +10,7 @@
 
       <el-form v-else :model="form" label-width="120px" size="default">
         <el-form-item label="API 地址">
-          <el-input v-model="form.api_base" placeholder="如：https://api.moonshot.cn/v1" />
+          <el-input v-model="form.base_url" placeholder="如：https://api.moonshot.cn/v1" />
         </el-form-item>
         <el-form-item label="API Key">
           <el-input v-model="form.api_key" type="password" show-password placeholder="sk-..." />
@@ -123,7 +123,7 @@ const verifying = ref(false)
 const verifyResult = ref(null)
 
 const form = reactive({
-  api_base: '',
+  base_url: '',
   api_key: '',
   model: '',
 })
@@ -133,8 +133,8 @@ async function fetchConfig() {
   try {
     const data = await settingsApi.getAi()
     Object.assign(form, {
-      api_base: data.api_base || '',
-      api_key: data.api_key || '',
+      base_url: data.base_url || data.api_base || '',
+      api_key: '',
       model: data.model || '',
     })
   } finally {
@@ -145,7 +145,11 @@ async function fetchConfig() {
 async function saveConfig() {
   saving.value = true
   try {
-    await settingsApi.updateAi({ ...form })
+    await settingsApi.updateAi({
+      base_url: form.base_url,
+      api_key: form.api_key || undefined,
+      model: form.model || undefined,
+    })
     ElMessage.success('配置已保存')
     verifyResult.value = null
   } finally {
@@ -157,7 +161,11 @@ async function verifyConnection() {
   verifying.value = true
   verifyResult.value = null
   try {
-    const res = await settingsApi.verifyAi({ ...form })
+    const res = await settingsApi.verifyAi({
+      base_url: form.base_url,
+      api_key: form.api_key || undefined,
+      model: form.model || undefined,
+    })
     verifyResult.value = { ok: true, message: res.message || '连接成功' }
   } catch (e) {
     verifyResult.value = { ok: false, message: e.response?.data?.detail || '连接失败' }

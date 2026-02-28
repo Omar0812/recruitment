@@ -92,7 +92,7 @@ def transfer_job(link_id: int, data: TransferJob, db: Session = Depends(get_db))
     ).first()
     if not lnk:
         raise HTTPException(status_code=404, detail="关联不存在")
-    new_lnk = pipeline_svc.transfer_job(db, lnk, data.new_job_id)
+    new_lnk = pipeline_svc.transfer_job(db, lnk, data.new_job_id, data.keep_records)
     return LinkOut.model_validate(new_lnk).model_dump()
 
 

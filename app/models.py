@@ -20,7 +20,8 @@ class Candidate(Base):
     years_exp = Column(Float)
     name_en = Column(String)
     education_list = Column(JSON, default=list)   # [{degree, school, major, period}]
-    work_experience = Column(JSON, default=list)  # [{company, title, period}]
+    work_experience = Column(JSON, default=list)  # [{company, title, period, description}]
+    project_experience = Column(JSON, default=list)  # [{name, role, period, description, tech_stack}]
     skill_tags = Column(JSON, default=list)
     source = Column(String)
     referred_by = Column(String, nullable=True)

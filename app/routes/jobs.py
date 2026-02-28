@@ -139,7 +139,10 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="岗位不存在")
-    active_links = [lnk for lnk in job.candidate_links if not lnk.outcome]
+    active_links = [
+        lnk for lnk in job.candidate_links
+        if lnk.outcome is None and (lnk.candidate is None or lnk.candidate.deleted_at is None)
+    ]
     return job_to_dict(job, len(active_links))
 
 

@@ -55,6 +55,7 @@ def build_payload(type_: str, conclusion, status, data) -> dict:
             "round": data.round,
             "score": data.score,
             "conclusion": conclusion,
+            "rejection_reason": data.rejection_reason,
             "scheduled_at": data.scheduled_at.isoformat() if data.scheduled_at else None,
             "location": data.location,
             "status": status,

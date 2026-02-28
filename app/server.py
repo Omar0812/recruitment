@@ -1,13 +1,34 @@
-from fastapi import FastAPI
+import sqlite3
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pathlib import Path
 
 from app.database import engine
 from app import models
 from app.routes import candidates, resume, jobs, pipeline, dashboard, activities, dedup, suppliers, context, insights, settings, analytics, email
 
 models.Base.metadata.create_all(bind=engine)
+
+
+def _ensure_sqlite_columns():
+    db_path = Path("data/recruitment.db")
+    if not db_path.exists():
+        return
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(candidates)")
+        existing = {row[1] for row in cur.fetchall()}
+        if "project_experience" not in existing:
+            cur.execute("ALTER TABLE candidates ADD COLUMN project_experience JSON")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+_ensure_sqlite_columns()
 Path("data/resumes").mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="招聘管理工具")
@@ -37,4 +58,6 @@ def index():
 
 @app.get("/{full_path:path}")
 def spa_fallback(full_path: str):
+    if full_path == "api" or full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not Found")
     return FileResponse("static/dist/index.html")

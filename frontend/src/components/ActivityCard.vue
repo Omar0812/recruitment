@@ -1,14 +1,38 @@
 <template>
   <div class="activity-card" :class="`activity-card--${activity.type}`">
     <div class="ac-header">
-      <span class="ac-type-badge" :style="typeBadgeStyle">{{ typeLabel }}</span>
-      <span v-if="roundLabel" class="ac-round">{{ roundLabel }}</span>
-      <span class="ac-date">{{ formatDate(activity.created_at) }}</span>
-      <span v-if="activity.actor" class="ac-actor">· {{ activity.actor }}</span>
+      <div class="ac-header-main">
+        <span class="ac-type-badge" :style="typeBadgeStyle">{{ typeLabel }}</span>
+        <span v-if="roundLabel" class="ac-round">{{ roundLabel }}</span>
+      </div>
+      <div class="ac-header-actions">
+        <span class="ac-date">{{ formatDate(activity.created_at) }}</span>
+        <el-dropdown v-if="editable" trigger="click" @command="handleCommand">
+          <span class="ac-more" @click.stop>
+            <el-icon><MoreFilled /></el-icon>
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="edit">编辑</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
     </div>
+
+    <!-- Resume review -->
+    <template v-if="activity.type === 'resume_review'">
+      <div v-if="activity.actor" class="ac-meta">筛选人：{{ activity.actor }}</div>
+      <div v-if="p.conclusion || activity.conclusion" class="ac-conclusion">
+        结论：{{ p.conclusion || activity.conclusion }}
+      </div>
+    </template>
 
     <!-- Interview -->
     <template v-if="activity.type === 'interview'">
+      <div v-if="activity.actor" class="ac-meta">
+        面试官：{{ activity.actor }}
+      </div>
       <div v-if="p.scheduled_at || activity.scheduled_at" class="ac-meta">
         <el-icon><Calendar /></el-icon>
         {{ formatDate(p.scheduled_at || activity.scheduled_at) }}
@@ -48,8 +72,8 @@
       <div v-if="p.start_date || activity.start_date" class="ac-meta">
         入职日期：{{ p.start_date || activity.start_date }}
       </div>
-      <div v-if="p.salary || activity.salary" class="ac-meta">
-        薪资：{{ p.salary || activity.salary }}
+      <div v-if="p.monthly_salary || p.salary || activity.salary" class="ac-meta">
+        薪资：{{ p.monthly_salary || p.salary || activity.salary }}
       </div>
     </template>
 
@@ -72,7 +96,9 @@ import { computed } from 'vue'
 
 const props = defineProps({
   activity: { type: Object, required: true },
+  editable: { type: Boolean, default: false },
 })
+const emit = defineEmits(['edit'])
 
 const a = computed(() => props.activity)
 const p = computed(() => a.value.payload || {})
@@ -116,6 +142,10 @@ const statusLabel = computed(() => {
   return s ? STATUS_LABELS[s] || s : null
 })
 
+function handleCommand(cmd) {
+  if (cmd === 'edit') emit('edit', a.value)
+}
+
 function formatDate(dt) {
   if (!dt) return ''
   return new Date(dt).toLocaleString('zh-CN', {
@@ -136,9 +166,23 @@ function formatDate(dt) {
 .ac-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 10px;
   margin-bottom: 6px;
-  flex-wrap: wrap;
+}
+
+.ac-header-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ac-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .ac-type-badge {
@@ -153,13 +197,26 @@ function formatDate(dt) {
   color: #666;
 }
 
-.ac-date, .ac-actor {
+.ac-date {
   font-size: 12px;
   color: #999;
-  margin-left: auto;
 }
 
-.ac-actor { margin-left: 0; }
+.ac-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: #999;
+  cursor: pointer;
+}
+
+.ac-more:hover {
+  background: #f5f5f5;
+  color: #666;
+}
 
 .ac-meta {
   font-size: 13px;

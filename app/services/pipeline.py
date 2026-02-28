@@ -98,7 +98,7 @@ def hire_candidate(db: Session, lnk: CandidateJobLink) -> CandidateJobLink:
     return lnk
 
 
-def transfer_job(db: Session, lnk: CandidateJobLink, new_job_id: int) -> CandidateJobLink:
+def transfer_job(db: Session, lnk: CandidateJobLink, new_job_id: int, keep_records: bool = False) -> CandidateJobLink:
     new_job = db.query(Job).filter(Job.id == new_job_id).first()
     if not new_job:
         raise HTTPException(status_code=404, detail="目标岗位不存在")
@@ -110,19 +110,45 @@ def transfer_job(db: Session, lnk: CandidateJobLink, new_job_id: int) -> Candida
     new_lnk = CandidateJobLink(
         candidate_id=lnk.candidate_id,
         job_id=new_job_id,
-        stage="简历筛选",
+        stage=lnk.stage if keep_records else "简历筛选",
         state="IN_PROGRESS",
     )
     db.add(new_lnk)
     db.flush()
 
-    db.add(ActivityRecord(
-        link_id=new_lnk.id,
-        type="resume_review",
-        stage="简历筛选",
-        status="completed",
-        conclusion="通过",
-    ))
+    if keep_records:
+        old_records = sorted(lnk.activity_records, key=lambda r: (r.created_at or datetime.min, r.id or 0))
+        for r in old_records:
+            db.add(ActivityRecord(
+                link_id=new_lnk.id,
+                type=r.type,
+                stage=r.stage,
+                created_at=r.created_at,
+                actor=r.actor,
+                comment=r.comment,
+                conclusion=r.conclusion,
+                rejection_reason=r.rejection_reason,
+                round=r.round,
+                interview_time=r.interview_time,
+                scheduled_at=r.scheduled_at,
+                location=r.location,
+                status=r.status,
+                score=r.score,
+                salary=r.salary,
+                start_date=r.start_date,
+                from_stage=r.from_stage,
+                to_stage=r.to_stage,
+                embedding_text=r.embedding_text,
+                payload=r.payload,
+            ))
+    else:
+        db.add(ActivityRecord(
+            link_id=new_lnk.id,
+            type="resume_review",
+            stage="简历筛选",
+            status="completed",
+            conclusion="通过",
+        ))
     db.add(HistoryEntry(
         candidate_id=lnk.candidate_id,
         job_id=new_job_id,

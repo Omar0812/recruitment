@@ -11,6 +11,9 @@ const http = axios.create({
 http.interceptors.response.use(
   (res) => res.data,
   (err) => {
+    if (err.config?.suppressErrorToast) {
+      return Promise.reject(err)
+    }
     const msg = err.response?.data?.detail || err.message || '请求失败'
     ElMessage.error(msg)
     return Promise.reject(err)
@@ -19,11 +22,11 @@ http.interceptors.response.use(
 
 // Wrap DELETE to support body (axios quirk: use `data` config key)
 const api = {
-  get: (url, params) => http.get(url, { params }),
-  post: (url, data) => http.post(url, data),
-  patch: (url, data) => http.patch(url, data),
-  put: (url, data) => http.put(url, data),
-  delete: (url, data) => http.delete(url, data !== undefined ? { data } : {}),
+  get: (url, params, options = {}) => http.get(url, { params, ...options }),
+  post: (url, data, options = {}) => http.post(url, data, options),
+  patch: (url, data, options = {}) => http.patch(url, data, options),
+  put: (url, data, options = {}) => http.put(url, data, options),
+  delete: (url, data, options = {}) => http.delete(url, data !== undefined ? { data, ...options } : options),
 }
 
 export default api

@@ -204,11 +204,16 @@ function copyJob(job) {
 async function saveJob() {
   if (!form.title.trim()) { ElMessage.warning('请填写岗位名称'); return }
   formLoading.value = true
+  const payload = { ...form }
+  if (payload.target_onboard_date instanceof Date) {
+    const d = payload.target_onboard_date
+    payload.target_onboard_date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
   try {
     if (editJob.value) {
-      await jobsApi.update(editJob.value.id, { ...form })
+      await jobsApi.update(editJob.value.id, payload)
     } else {
-      await jobsApi.create({ ...form })
+      await jobsApi.create(payload)
     }
     formVisible.value = false
     ElMessage.success('保存成功')

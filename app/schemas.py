@@ -34,6 +34,7 @@ class CandidateOut(BaseModel):
     blacklist_note: Optional[str] = None
     education_list: list = []
     work_experience: list = []
+    project_experience: list = []
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -72,6 +73,8 @@ class CandidateOut(BaseModel):
                 data.__dict__["education_list"] = []
             if data.__dict__.get("work_experience") is None:
                 data.__dict__["work_experience"] = []
+            if data.__dict__.get("project_experience") is None:
+                data.__dict__["project_experience"] = []
         return data
 
 
@@ -160,6 +163,7 @@ class ActivityOut(BaseModel):
 
             d["comment"] = _pick("comment")
             d["conclusion"] = _pick("conclusion")
+            d["rejection_reason"] = _pick("rejection_reason")
             d["round"] = _pick("round")
             d["scheduled_at"] = _pick("scheduled_at")
             d["location"] = _pick("location")

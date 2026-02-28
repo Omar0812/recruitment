@@ -1,0 +1,1 @@
+import{a as t}from"./base-BM3hE1U5.js";const s={getAi:()=>t.get("/settings/ai"),updateAi:i=>t.patch("/settings/ai",i),verifyAi:i=>t.post("/settings/ai/verify",i),getEmail:()=>t.get("/settings/email"),updateEmail:i=>t.patch("/settings/email",i),verifyEmail:()=>t.post("/settings/email/verify")};export{s};

@@ -9,33 +9,45 @@
     <el-form :model="form" label-width="80px" size="default">
       <!-- Interview -->
       <template v-if="type === 'interview'">
-        <el-form-item label="轮次">
-          <el-input v-model="form.round" placeholder="如：一面、二面、HR面" />
-        </el-form-item>
-        <el-form-item label="面试官">
-          <el-input v-model="form.actor" placeholder="面试官姓名" />
-        </el-form-item>
-        <el-form-item label="面试时间">
-          <el-date-picker
-            v-model="form.scheduled_at"
-            type="datetime"
-            placeholder="选择面试时间"
-            style="width: 100%"
-          />
-        </el-form-item>
-        <el-form-item label="地点/形式">
-          <el-input v-model="form.location" placeholder="如：线上/会议室A" />
-        </el-form-item>
-        <el-form-item label="结论">
-          <el-select v-model="form.conclusion" placeholder="请选择" style="width: 100%">
-            <el-option label="通过" value="通过" />
-            <el-option label="待定" value="待定" />
-            <el-option label="淘汰" value="淘汰" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="form.conclusion" label="评分">
-          <el-rate v-model="form.score" :max="5" />
-        </el-form-item>
+        <template v-if="interviewMode === 'schedule'">
+          <el-form-item label="轮次">
+            <el-input v-model="form.round" placeholder="如：面试1、面试2、HR面" />
+          </el-form-item>
+          <el-form-item label="面试官">
+            <el-input v-model="form.actor" placeholder="面试官姓名" />
+          </el-form-item>
+          <el-form-item label="面试时间">
+            <el-date-picker
+              v-model="form.scheduled_at"
+              type="datetime"
+              placeholder="选择面试时间"
+              style="width: 100%"
+            />
+          </el-form-item>
+          <el-form-item label="地点/链接">
+            <el-input v-model="form.location" placeholder="选填，如：线上会议链接 / 会议室A" />
+          </el-form-item>
+        </template>
+        <template v-else>
+          <el-form-item label="面试官">
+            <el-input v-model="form.actor" placeholder="面试官姓名" />
+          </el-form-item>
+          <el-form-item label="结论">
+            <el-select v-model="form.conclusion" placeholder="请选择" style="width: 100%">
+              <el-option label="通过" value="通过" />
+              <el-option label="待定" value="待定" />
+              <el-option label="淘汰" value="淘汰" />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="form.conclusion === '淘汰'" label="淘汰原因" required>
+            <el-select v-model="form.rejection_reason" placeholder="请选择淘汰原因" style="width: 100%">
+              <el-option v-for="r in REJECT_REASONS" :key="r" :label="r" :value="r" />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="form.conclusion" label="评分">
+            <el-rate v-model="form.score" :max="5" />
+          </el-form-item>
+        </template>
       </template>
 
       <!-- Offer -->
@@ -99,12 +111,12 @@
       </template>
 
       <!-- Note (always shown) -->
-      <el-form-item label="备注">
+      <el-form-item :label="commentLabel">
         <el-input
           v-model="form.comment"
           type="textarea"
           :rows="3"
-          placeholder="补充说明（选填）"
+          :placeholder="commentPlaceholder"
         />
       </el-form-item>
     </el-form>
@@ -142,7 +154,33 @@ const TYPE_TITLES = {
   note: '添加备注',
 }
 
-const formTitle = computed(() => TYPE_TITLES[props.type] || '活动记录')
+const formTitle = computed(() => {
+  if (props.type === 'interview') {
+    if (!props.activityId) return '安排面试'
+    return interviewMode.value === 'feedback' ? '编辑面评' : '编辑面试安排'
+  }
+  return TYPE_TITLES[props.type] || '活动记录'
+})
+const REJECT_REASONS = ['技术能力不达标', '经验不匹配', '文化/价值观不符', '背调有问题', '薪资期望过高', '其他']
+const interviewMode = computed(() => {
+  if (props.type !== 'interview') return 'schedule'
+  const status = `${form.status || ''}`
+  const hasConclusion = Boolean(form.conclusion)
+  if (props.activityId && (status === 'completed' || hasConclusion)) return 'feedback'
+  return 'schedule'
+})
+const commentLabel = computed(() => {
+  if (props.type === 'interview') {
+    return interviewMode.value === 'feedback' ? '面评内容' : '面试说明'
+  }
+  return '备注'
+})
+const commentPlaceholder = computed(() => {
+  if (props.type === 'interview') {
+    return interviewMode.value === 'feedback' ? '填写面评（选填）' : '补充安排说明（选填）'
+  }
+  return '补充说明（选填）'
+})
 
 const form = reactive({
   round: '',
@@ -155,6 +193,8 @@ const form = reactive({
   monthly_salary: '',
   salary_months: '',
   other_cash: '',
+  rejection_reason: '',
+  status: '',
   start_date: null,
   salary: '',
 })
@@ -164,6 +204,7 @@ function open(prefill = {}) {
     round: '', actor: '', scheduled_at: null, location: '',
     conclusion: '', score: 0, comment: '',
     monthly_salary: '', salary_months: '', other_cash: '',
+    rejection_reason: '', status: '',
     start_date: null, salary: '',
   }, prefill)
   visible.value = true
@@ -181,20 +222,42 @@ async function handleSubmit() {
     ElMessage.warning('请填写筛选人')
     return
   }
-  if (['interview', 'offer', 'background_check', 'resume_review'].includes(props.type) && !form.conclusion) {
-    // Only require if there are conclusion options
-    if (props.type !== 'interview') {
-      ElMessage.warning('请选择结论')
-      return
-    }
+  if (['offer', 'background_check', 'resume_review'].includes(props.type) && !form.conclusion) {
+    ElMessage.warning('请选择结论')
+    return
+  }
+  if (props.type === 'interview' && interviewMode.value === 'schedule' && !form.scheduled_at) {
+    ElMessage.warning('请选择面试时间')
+    return
+  }
+  if (props.type === 'interview' && interviewMode.value === 'feedback' && !form.conclusion) {
+    ElMessage.warning('请选择结论')
+    return
+  }
+  if (props.type === 'interview' && interviewMode.value === 'feedback' && form.conclusion === '淘汰' && !form.rejection_reason) {
+    ElMessage.warning('请选择淘汰原因')
+    return
   }
 
   loading.value = true
   try {
     const payload = { ...form }
+    if (props.type === 'interview') {
+      if (interviewMode.value === 'schedule') {
+        payload.status = 'scheduled'
+        delete payload.conclusion
+        delete payload.score
+        delete payload.rejection_reason
+      } else {
+        payload.status = 'completed'
+      }
+    }
+    if (payload.scheduled_at instanceof Date) payload.scheduled_at = payload.scheduled_at.toISOString()
+    if (payload.start_date instanceof Date) payload.start_date = payload.start_date.toISOString().slice(0, 10)
+    if (payload.score === 0) delete payload.score
     // Remove empty fields
     Object.keys(payload).forEach(k => {
-      if (payload[k] === '' || payload[k] === null) {
+      if (payload[k] === '' || payload[k] === null || payload[k] === undefined) {
         delete payload[k]
       }
     })
