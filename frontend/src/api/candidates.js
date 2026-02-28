@@ -8,6 +8,7 @@ export const candidatesApi = {
   blacklist: (id, data) => api.post(`/candidates/${id}/blacklist`, data),
   unblacklist: (id, data) => api.delete(`/candidates/${id}/blacklist`, data),
   checkDuplicate: (data) => api.post('/candidates/check-duplicate', data),
+  intakeResolve: (data) => api.post('/candidates/intake/resolve', data),
   getLastApplication: (id) => api.get(`/candidates/${id}/last-application`),
   resumePreview: (id) => api.get(`/candidates/${id}/resume-preview`),
 }

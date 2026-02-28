@@ -105,23 +105,101 @@
               <el-descriptions-item v-if="candidate.notes" label="备注">{{ candidate.notes }}</el-descriptions-item>
             </el-descriptions>
 
+            <div class="last-app-card">
+              <div class="last-app-card__title">最近一次申请</div>
+              <template v-if="lastApplication">
+                <div class="last-app-card__line">
+                  岗位：{{ lastApplication.job_title || '未知岗位' }} · 阶段：{{ lastApplication.final_stage || '未知阶段' }}
+                </div>
+                <div class="last-app-card__line">
+                  结果：{{ lastApplicationOutcome(lastApplication.outcome) }}
+                  <span v-if="lastApplication.rejection_reason"> · 原因：{{ lastApplication.rejection_reason }}</span>
+                  <span v-if="lastApplication.days_ago != null"> · {{ lastApplication.days_ago }} 天前</span>
+                </div>
+              </template>
+              <div v-else class="last-app-card__empty">暂无申请记录</div>
+            </div>
+
             <div v-if="(candidate.skill_tags || []).length" style="margin-top: 12px">
               <el-tag v-for="t in candidate.skill_tags" :key="t" size="small" style="margin: 2px">{{ t }}</el-tag>
+            </div>
+
+            <!-- Work experience list -->
+            <div v-if="(candidate.work_experience || []).length" style="margin-top: 16px">
+              <div style="font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px">工作经历</div>
+              <div
+                v-for="(job, i) in candidate.work_experience"
+                :key="i"
+                style="padding: 6px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px"
+              >
+                <div style="font-weight: 600; color: #222">{{ job.title || '—' }} <span style="color: #888; font-weight: 400">@ {{ job.company || '—' }}</span></div>
+                <div v-if="job.period" style="color: #aaa; font-size: 12px; margin-top: 2px">{{ job.period }}</div>
+                <div v-if="job.description" style="color: #555; font-size: 12px; margin-top: 4px; white-space: pre-wrap; line-height: 1.5">
+                  {{ job.description }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Project experience list -->
+            <div v-if="(candidate.project_experience || []).length" style="margin-top: 16px">
+              <div style="font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px">项目经历</div>
+              <div
+                v-for="(proj, i) in candidate.project_experience"
+                :key="i"
+                style="padding: 8px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px"
+              >
+                <div style="font-weight: 600; color: #222">
+                  {{ proj.name || '—' }}
+                  <span v-if="proj.role" style="color: #888; font-weight: 400"> · {{ proj.role }}</span>
+                </div>
+                <div v-if="proj.period" style="color: #aaa; font-size: 12px; margin-top: 2px">{{ proj.period }}</div>
+                <div v-if="proj.tech_stack && proj.tech_stack.length" style="color: #666; font-size: 12px; margin-top: 4px">
+                  技术栈：{{ Array.isArray(proj.tech_stack) ? proj.tech_stack.join('、') : proj.tech_stack }}
+                </div>
+                <div v-if="proj.description" style="color: #555; font-size: 12px; margin-top: 4px; white-space: pre-wrap; line-height: 1.5">
+                  {{ proj.description }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Education list -->
+            <div v-if="(candidate.education_list || []).length" style="margin-top: 16px">
+              <div style="font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px">教育经历</div>
+              <div
+                v-for="(edu, i) in candidate.education_list"
+                :key="i"
+                style="padding: 6px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px"
+              >
+                <div style="font-weight: 600; color: #222">{{ edu.degree || '—' }} <span style="color: #888; font-weight: 400">· {{ edu.school || '—' }}</span><span v-if="edu.major" style="color: #aaa; font-weight: 400"> · {{ edu.major }}</span></div>
+                <div v-if="edu.period" style="color: #aaa; font-size: 12px; margin-top: 2px">{{ edu.period }}</div>
+              </div>
             </div>
 
             <!-- Job links -->
             <div v-if="(candidate.job_links || []).length" style="margin-top: 16px">
               <div style="font-size: 13px; color: #888; margin-bottom: 6px">流程记录</div>
-              <el-tag
+              <div
                 v-for="lnk in candidate.job_links"
                 :key="lnk.id"
-                :type="lnk.outcome === 'hired' ? 'success' : lnk.outcome ? 'info' : 'primary'"
-                size="small"
-                style="margin: 3px"
+                class="job-link-row"
               >
-                {{ lnk.job_title }} · {{ lnk.stage }}
-                <span v-if="lnk.outcome"> ({{ outcomeLabel(lnk.outcome) }})</span>
-              </el-tag>
+                <el-tag
+                  :type="lnk.outcome === 'hired' ? 'success' : lnk.outcome ? 'info' : 'primary'"
+                  size="small"
+                >
+                  {{ lnk.job_title }} · {{ lnk.stage }}
+                  <span v-if="lnk.outcome"> ({{ outcomeLabel(lnk.outcome) }})</span>
+                </el-tag>
+                <el-button
+                  v-if="!lnk.outcome"
+                  size="small"
+                  link
+                  type="primary"
+                  @click="openTransferDialog(lnk)"
+                >
+                  转岗
+                </el-button>
+              </div>
             </div>
           </template>
         </el-tab-pane>
@@ -201,6 +279,37 @@
         <el-button type="primary" :loading="actionLoading" @click="confirmLink">加入</el-button>
       </template>
     </el-dialog>
+
+    <!-- Transfer dialog -->
+    <el-dialog v-model="transferDialogVisible" title="转岗" width="420px" append-to-body>
+      <div v-if="transferTargetLink" style="margin-bottom: 10px; color: #666; font-size: 13px">
+        当前流程：{{ transferTargetLink.job_title }} · {{ transferTargetLink.stage }}
+      </div>
+      <el-form label-width="96px">
+        <el-form-item label="目标岗位" required>
+          <el-select v-model="transferForm.new_job_id" placeholder="请选择岗位" style="width: 100%">
+            <el-option
+              v-for="j in transferJobOptions"
+              :key="j.id"
+              :label="j.title"
+              :value="j.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="历史记录">
+          <el-switch
+            v-model="transferForm.keep_records"
+            inline-prompt
+            active-text="保留"
+            inactive-text="从头"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="transferDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="actionLoading" @click="confirmTransfer">确认转岗</el-button>
+      </template>
+    </el-dialog>
   </el-drawer>
 </template>
 
@@ -229,13 +338,17 @@ const loadingActivities = ref(false)
 const resumeHtml = ref('')
 const resumeRedirect = ref('')
 const openJobs = ref([])
+const lastApplication = ref(null)
 
 const blacklistDialogVisible = ref(false)
 const unblacklistDialogVisible = ref(false)
 const linkDialogVisible = ref(false)
+const transferDialogVisible = ref(false)
 const actionLoading = ref(false)
 const selectedJobId = ref(null)
 const unblacklistReason = ref('')
+const transferTargetLink = ref(null)
+const transferForm = reactive({ new_job_id: null, keep_records: true })
 
 const blacklistForm = reactive({ reason: '', note: '' })
 const editForm = reactive({
@@ -246,11 +359,22 @@ const editForm = reactive({
 
 const OUTCOME_LABELS = { hired: '已入职', rejected: '已淘汰', withdrawn: '已退出' }
 function outcomeLabel(o) { return OUTCOME_LABELS[o] || o }
+const transferJobOptions = computed(() => {
+  if (!transferTargetLink.value) return openJobs.value
+  return openJobs.value.filter(j => j.id !== transferTargetLink.value.job_id)
+})
+function lastApplicationOutcome(o) { return o ? (OUTCOME_LABELS[o] || o) : '进行中' }
 
 async function loadCandidate() {
   loading.value = true
+  lastApplication.value = null
   try {
-    candidate.value = await candidatesApi.get(props.candidateId)
+    const [candidateData, lastAppData] = await Promise.all([
+      candidatesApi.get(props.candidateId),
+      candidatesApi.getLastApplication(props.candidateId).catch(() => ({ last_application: null })),
+    ])
+    candidate.value = candidateData
+    lastApplication.value = lastAppData?.last_application || null
     Object.assign(editForm, {
       name: candidate.value.name || '',
       name_en: candidate.value.name_en || '',
@@ -371,6 +495,32 @@ async function confirmLink() {
   }
 }
 
+async function openTransferDialog(link) {
+  openJobs.value = await jobsApi.list({ include_closed: false })
+  transferTargetLink.value = link
+  transferForm.new_job_id = null
+  transferForm.keep_records = true
+  transferDialogVisible.value = true
+}
+
+async function confirmTransfer() {
+  if (!transferTargetLink.value) return
+  if (!transferForm.new_job_id) { ElMessage.warning('请选择目标岗位'); return }
+  actionLoading.value = true
+  try {
+    await pipelineApi.transfer(transferTargetLink.value.id, {
+      new_job_id: transferForm.new_job_id,
+      keep_records: transferForm.keep_records,
+    })
+    transferDialogVisible.value = false
+    ElMessage.success('已完成转岗')
+    await loadCandidate()
+    emit('updated')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
 onMounted(loadCandidate)
 
 async function copyResumeSummary() {
@@ -405,6 +555,32 @@ async function copyResumeSummary() {
   margin-bottom: 16px;
 }
 
+.last-app-card {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.last-app-card__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 6px;
+}
+
+.last-app-card__line {
+  font-size: 12px;
+  color: #374151;
+  line-height: 1.6;
+}
+
+.last-app-card__empty {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
 .resume-preview {
   font-size: 13px;
   line-height: 1.6;
@@ -413,4 +589,11 @@ async function copyResumeSummary() {
 
 .resume-preview :deep(p) { margin-bottom: 6px; }
 .resume-preview :deep(table) { margin-bottom: 10px; }
+
+.job-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 3px 0;
+}
 </style>
