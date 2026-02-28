@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: AI 设置页面 Vue 组件
 `frontend/src/pages/Settings.vue` SHALL 实现 AI 设置页面，对应现有 `#/settings` 路由，支持配置 AI provider、base_url、model、api_key。页面 SHALL 同时包含邮件 SMTP 配置区和邮件模板编辑区（面试邀约模板、拒信模板）。

@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: 进行中流程页面 Vue 组件
 `frontend/src/pages/Pipeline.vue` SHALL 实现进行中流程页面，对应现有 `#/pipeline` 路由，功能与原 `app.js` 的 `renderPipelinePage` 完全一致。展开区 SHALL 新增「复制简历摘要」按钮和邀约邮件发送入口。

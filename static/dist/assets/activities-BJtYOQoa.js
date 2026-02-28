@@ -1,1 +1,0 @@
-import{a as i}from"./base-CG7aq3F4.js";const s={list:t=>i.get("/activities",t),create:t=>i.post("/activities",t),update:(t,e)=>i.patch(`/activities/${t}`,e),delete:t=>i.delete(`/activities/${t}`)};export{s as a};

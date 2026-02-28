@@ -18,6 +18,7 @@
         <el-button v-if="!candidate.blacklisted" size="small" type="danger" plain @click="openBlacklist">加入黑名单</el-button>
         <el-button v-else size="small" type="warning" plain @click="openUnblacklist">解除黑名单</el-button>
         <el-button v-if="!editMode" size="small" type="primary" @click="openLinkToJob">加入流程</el-button>
+        <el-button v-if="!editMode" size="small" plain @click="copyResumeSummary">复制简历摘要</el-button>
       </div>
 
       <!-- Blacklisted banner -->
@@ -371,6 +372,27 @@ async function confirmLink() {
 }
 
 onMounted(loadCandidate)
+
+async function copyResumeSummary() {
+  if (!candidate.value) return
+  const c = candidate.value
+  const parts = []
+  if (c.name || c.name_en) parts.push(c.name || c.name_en)
+  const jobInfo = []
+  if (c.last_title) jobInfo.push(c.last_title)
+  if (c.last_company) jobInfo.push(`@ ${c.last_company}`)
+  if (jobInfo.length) parts.push(jobInfo.join(' '))
+  if (c.years_exp) parts.push(`${c.years_exp}年经验`)
+  if (c.education) parts.push(c.education)
+  if (c.skill_tags && c.skill_tags.length) parts.push(c.skill_tags.join('、'))
+  const text = parts.join(' · ')
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制')
+  } catch {
+    ElMessage.error('复制失败')
+  }
+}
 </script>
 
 <style scoped>

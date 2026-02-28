@@ -77,6 +77,16 @@
               <el-button size="small" plain @click="openNoteForm(link)">+ 备注</el-button>
               <el-button size="small" plain type="warning" @click="openWithdrawForm(link)">退出</el-button>
               <el-button size="small" plain type="danger" @click="openRejectForm(link)">淘汰</el-button>
+              <el-button size="small" plain @click="copyResumeSummary(link)">复制简历摘要</el-button>
+              <el-tooltip content="请先在设置页配置邮件" placement="top" :disabled="true">
+                <el-button
+                  size="small"
+                  plain
+                  type="primary"
+                  :loading="sendingInvite[link.id]"
+                  @click="sendInviteEmail(link)"
+                >发送邀约邮件</el-button>
+              </el-tooltip>
             </div>
 
             <!-- Inline forms -->
@@ -146,10 +156,12 @@
 
 <script setup>
 import { ref, computed, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { usePipelineStore } from '../stores/pipeline'
 import { activitiesApi } from '../api/activities'
 import { pipelineApi } from '../api/pipeline'
+import { candidatesApi } from '../api/candidates'
+import { emailApi } from '../api/email'
 import { debounce } from '../api/utils'
 import ActivityCard from '../components/ActivityCard.vue'
 import TailNode from '../components/TailNode.vue'
@@ -162,6 +174,7 @@ const activitiesMap = reactive({})
 const loadingActivityId = ref(null)
 const inlineMode = reactive({})
 const inlineData = reactive({})
+const rejectedLinks = reactive(new Set())  // 记录刚被淘汰的 link，展示复制拒信
 
 const WITHDRAW_REASONS = ['候选人主动放弃', '薪资谈不拢', '接受其他 Offer', '个人原因', '岗位暂停', '其他']
 const REJECT_REASONS = ['技术能力不达标', '经验不匹配', '文化/价值观不符', '背调有问题', '薪资期望过高', '其他']
@@ -260,6 +273,82 @@ function closeInlineForm(linkId) {
   delete inlineMode[linkId]
 }
 
+// ── 邀约邮件 ──────────────────────────────────────────────────
+const sendingInvite = reactive({})
+
+async function sendInviteEmail(link) {
+  sendingInvite[link.id] = true
+  try {
+    await ElMessageBox.confirm(
+      `确认向 ${link.candidate_name} 发送面试邀约邮件？`,
+      '发送邀约邮件',
+      { confirmButtonText: '发送', cancelButtonText: '取消', type: 'info' }
+    )
+    const res = await emailApi.sendInterviewInvite(link.id)
+    ElMessage.success(`邀约邮件已发送至 ${res.sent_to}`)
+  } catch (e) {
+    if (e === 'cancel') return
+    const detail = e.response?.data?.detail || ''
+    if (detail === 'SMTP_NOT_CONFIGURED') {
+      ElMessage.warning('请先在设置页配置邮件发送')
+    } else if (detail.includes('未填写邮箱')) {
+      ElMessage.warning('候选人未填写邮箱，无法发送')
+    } else {
+      ElMessage.error(detail || '邮件发送失败')
+    }
+  } finally {
+    sendingInvite[link.id] = false
+  }
+}
+
+// ── 简历摘要复制 ───────────────────────────────────────────────
+function buildResumeSummary(cand, jobTitle) {
+  const parts = []
+  if (cand.name || cand.name_en) parts.push(cand.name || cand.name_en)
+  const jobInfo = []
+  if (cand.last_title) jobInfo.push(cand.last_title)
+  if (cand.last_company) jobInfo.push(`@ ${cand.last_company}`)
+  if (jobInfo.length) parts.push(jobInfo.join(' '))
+  if (cand.years_exp) parts.push(`${cand.years_exp}年经验`)
+  if (cand.education) parts.push(cand.education)
+  if (cand.skill_tags && cand.skill_tags.length) parts.push(cand.skill_tags.join('、'))
+  if (jobTitle) parts.push(`应聘：${jobTitle}`)
+  return parts.join(' · ')
+}
+
+async function copyResumeSummary(link) {
+  try {
+    const cand = await candidatesApi.get(link.candidate_id)
+    const text = buildResumeSummary(cand, link.job_title)
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制')
+  } catch {
+    ElMessage.error('复制失败')
+  }
+}
+
+// ── 拒信复制 ──────────────────────────────────────────────────
+const DEFAULT_REJECTION_TEMPLATE = `尊敬的 {{candidate_name}}，\n\n感谢您对【{{job_title}}】职位的关注和投入。\n\n经过慎重评估，我们遗憾地通知您，本次未能与您进一步推进流程。希望您在求职过程中一切顺利。\n\n祝好，\n招聘团队`
+
+async function copyRejectionText(link) {
+  // 尝试从 settings 读取模板，失败则用默认
+  let template = DEFAULT_REJECTION_TEMPLATE
+  try {
+    const { settingsApi } = await import('../api/settings')
+    const cfg = await settingsApi.getEmail()
+    if (cfg.rejection_template) template = cfg.rejection_template
+  } catch {}
+  const text = template
+    .replace(/\{\{candidate_name\}\}/g, link.candidate_name || '')
+    .replace(/\{\{job_title\}\}/g, link.job_title || '')
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制')
+  } catch {
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
 async function saveNote(link) {
   const comment = inlineData[link.id]?.comment?.trim()
   if (!comment) { ElMessage.warning('请输入备注内容'); return }
@@ -293,6 +382,15 @@ async function saveReject(link) {
   store.removeLink(link.id)
   expandedId.value = null
   ElMessage.success('已标记淘汰')
+  // 淘汰后提示复制拒信
+  try {
+    await ElMessageBox.confirm('是否复制拒信文本？', '淘汰成功', {
+      confirmButtonText: '复制拒信',
+      cancelButtonText: '跳过',
+      type: 'success',
+    })
+    await copyRejectionText(link)
+  } catch {}
 }
 
 async function refresh() {
