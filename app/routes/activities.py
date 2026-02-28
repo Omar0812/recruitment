@@ -5,7 +5,7 @@ from typing import Optional
 from datetime import datetime
 
 from app.database import get_db
-from app.models import ActivityRecord, CandidateJobLink
+from app.models import ActivityRecord, CandidateJobLink, HistoryEntry
 from app.schemas import ActivityOut
 from app.services.activities import (
     CHAIN_TYPES, _RETIRED_CHAIN_TYPES,
@@ -57,6 +57,22 @@ class ActivityUpdate(BaseModel):
     other_cash: Optional[str] = None
 
 
+def _mark_link_rejected(db: Session, lnk: CandidateJobLink, reason: str):
+    # Keep link-level outcome/state in sync with activity conclusion=淘汰.
+    if lnk.outcome == "rejected" and lnk.rejection_reason == reason:
+        return
+    lnk.outcome = "rejected"
+    lnk.state = "REJECTED"
+    lnk.rejection_reason = reason
+    lnk.updated_at = datetime.utcnow()
+    db.add(HistoryEntry(
+        candidate_id=lnk.candidate_id,
+        job_id=lnk.job_id,
+        event_type="outcome",
+        detail=f"结果：淘汰（{reason}）",
+    ))
+
+
 @router.get("")
 def list_activities(link_id: int, db: Session = Depends(get_db)):
     records = db.query(ActivityRecord).filter(
@@ -81,6 +97,8 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="背调结论为必填项")
         if data.conclusion not in ("通过", "不通过", "有瑕疵"):
             raise HTTPException(status_code=400, detail="背调结论须为：通过 / 不通过 / 有瑕疵")
+    if data.conclusion == "淘汰" and not data.rejection_reason:
+        raise HTTPException(status_code=400, detail="结论为淘汰时必须填写淘汰原因")
 
     all_chain_types = CHAIN_TYPES | _RETIRED_CHAIN_TYPES
     if data.type in CHAIN_TYPES and data.type != "onboard":
@@ -149,6 +167,8 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
         lnk.outcome = "hired"
         lnk.state = "HIRED"
         lnk.updated_at = datetime.utcnow()
+    elif conclusion == "淘汰":
+        _mark_link_rejected(db, lnk, data.rejection_reason)
 
     db.commit()
     db.refresh(record)
@@ -162,11 +182,25 @@ def update_activity(record_id: int, data: ActivityUpdate, db: Session = Depends(
         raise HTTPException(status_code=404, detail="记录不存在")
     if data.score is not None and not (1 <= data.score <= 5):
         raise HTTPException(status_code=400, detail="评分须在 1-5 之间")
-    for field, val in data.model_dump(exclude_unset=True).items():
+    updated_fields = data.model_dump(exclude_unset=True)
+    for field, val in updated_fields.items():
         setattr(record, field, val)
     if record.payload is not None:
-        updated = data.model_dump(exclude_unset=True)
-        record.payload = {**record.payload, **{k: v for k, v in updated.items() if k in record.payload}}
+        record.payload = {**record.payload, **{k: v for k, v in updated_fields.items() if k in record.payload}}
+
+    final_conclusion = updated_fields.get("conclusion", record.conclusion)
+    if final_conclusion == "淘汰":
+        reason = (
+            updated_fields.get("rejection_reason")
+            or record.rejection_reason
+            or (record.payload or {}).get("rejection_reason")
+        )
+        if not reason:
+            raise HTTPException(status_code=400, detail="结论为淘汰时必须填写淘汰原因")
+        lnk = db.query(CandidateJobLink).filter(CandidateJobLink.id == record.link_id).first()
+        if lnk:
+            _mark_link_rejected(db, lnk, reason)
+
     sync_stage(record.link_id, db)
     db.commit()
     db.refresh(record)

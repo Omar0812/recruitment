@@ -7,8 +7,13 @@
         placeholder="搜索候选人/岗位..."
         clearable
         style="width: 220px"
-        @input="debouncedSearch"
       />
+      <el-select v-model="viewMode" style="width: 130px">
+        <el-option label="按候选人" value="candidate" />
+        <el-option label="按岗位" value="job" />
+        <el-option label="按阶段" value="stage" />
+      </el-select>
+      <el-button @click="filterDrawerVisible = true">筛选</el-button>
       <el-button :loading="store.loading" @click="refresh">刷新</el-button>
     </div>
 
@@ -16,10 +21,9 @@
       <el-skeleton :rows="6" animated />
     </div>
 
-    <!-- Group by job -->
-    <div v-for="group in groupedByJob" :key="group.jobId" class="job-group">
+    <div v-for="group in groupedLinks" :key="group.key" class="job-group">
       <div class="job-group-header">
-        <span class="job-title">{{ group.jobTitle }}</span>
+        <span class="job-title">{{ group.title }}</span>
         <span class="job-count">{{ group.links.length }} 人</span>
       </div>
       <div
@@ -31,12 +35,13 @@
         <div class="cc-header" @click="toggleCard(link)">
           <div class="cc-left">
             <span class="cc-name">{{ link.candidate_name }}</span>
+            <span v-if="viewMode === 'candidate'" class="cc-sub">{{ link.job_title || '未知岗位' }}</span>
             <el-tag size="small" type="info" style="margin-left: 8px">{{ link.stage }}</el-tag>
             <el-icon v-if="link.starred"><Star /></el-icon>
           </div>
           <div class="cc-right">
             <span v-if="link.days_since_update !== null" class="days-badge" :class="staleBadgeClass(link)">
-              {{ link.days_since_update }}天前
+              {{ link.days_since_update }}天未更新
             </span>
             <el-icon class="cc-chevron" :class="{ 'is-open': expandedId === link.id }">
               <ArrowDown />
@@ -56,6 +61,8 @@
                 v-for="act in historyActivities(link.id)"
                 :key="act.id"
                 :activity="act"
+                :editable="true"
+                @edit="openActivityEditor(act, link.id)"
               />
             </div>
 
@@ -68,6 +75,7 @@
                 :all-activities="activitiesMap[link.id] || []"
                 @refresh="refreshLink(link)"
                 @removed="store.removeLink(link.id)"
+                @edit-activity="openActivityEditor($event, link.id)"
               />
               <div v-else class="no-activities">暂无活动记录</div>
             </div>
@@ -76,14 +84,13 @@
             <div class="inline-actions">
               <el-button size="small" plain @click="openNoteForm(link)">+ 备注</el-button>
               <el-button size="small" plain type="warning" @click="openWithdrawForm(link)">退出</el-button>
-              <el-button size="small" plain type="danger" @click="openRejectForm(link)">淘汰</el-button>
               <el-button size="small" plain @click="copyResumeSummary(link)">复制简历摘要</el-button>
-              <el-tooltip content="请先在设置页配置邮件" placement="top" :disabled="true">
+              <el-tooltip :content="inviteTooltip" placement="top">
                 <el-button
                   size="small"
                   plain
                   type="primary"
-                  :loading="sendingInvite[link.id]"
+                  :loading="sendingInvite[link.id] || emailConfigLoading"
                   @click="sendInviteEmail(link)"
                 >发送邀约邮件</el-button>
               </el-tooltip>
@@ -124,80 +131,127 @@
                   <el-button size="small" @click="closeInlineForm(link.id)">取消</el-button>
                 </div>
               </template>
-
-              <!-- Reject -->
-              <template v-if="inlineMode[link.id] === 'reject'">
-                <el-select
-                  v-model="inlineData[link.id].reason"
-                  placeholder="选择淘汰原因"
-                  style="width: 100%; margin-bottom: 8px"
-                >
-                  <el-option v-for="r in REJECT_REASONS" :key="r" :label="r" :value="r" />
-                </el-select>
-                <el-input
-                  v-model="inlineData[link.id].comment"
-                  placeholder="补充说明（选填）"
-                  style="margin-bottom: 8px"
-                />
-                <div style="display: flex; gap: 8px">
-                  <el-button size="small" type="danger" @click="saveReject(link)">确认淘汰</el-button>
-                  <el-button size="small" @click="closeInlineForm(link.id)">取消</el-button>
-                </div>
-              </template>
             </div>
           </template>
         </div>
       </div>
     </div>
 
+    <ActivityForm
+      ref="editFormRef"
+      :type="editingType"
+      :link-id="editingLinkId"
+      :activity-id="editingActivityId"
+      @saved="handleActivityEdited"
+    />
+
+    <el-drawer v-model="filterDrawerVisible" title="筛选" size="320px">
+      <el-form label-position="top" size="small">
+        <el-form-item label="岗位">
+          <el-select v-model="filters.job" clearable placeholder="全部岗位" style="width: 100%">
+            <el-option v-for="job in jobOptions" :key="job" :label="job" :value="job" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="阶段">
+          <el-select v-model="filters.stage" clearable placeholder="全部阶段" style="width: 100%">
+            <el-option v-for="stage in stageOptions" :key="stage" :label="stage" :value="stage" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="停滞时长">
+          <el-select v-model="filters.staleDays" clearable placeholder="不限" style="width: 100%">
+            <el-option v-for="d in staleDayOptions" :key="d" :label="`≥ ${d} 天未更新`" :value="d" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <div class="drawer-footer">
+        <el-button @click="resetFilters">重置</el-button>
+      </div>
+    </el-drawer>
+
     <el-empty v-if="!store.loading && !filteredLinks.length" description="暂无进行中的候选人" />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRoute, useRouter } from 'vue-router'
 import { usePipelineStore } from '../stores/pipeline'
 import { activitiesApi } from '../api/activities'
 import { pipelineApi } from '../api/pipeline'
 import { candidatesApi } from '../api/candidates'
 import { emailApi } from '../api/email'
+import { settingsApi } from '../api/settings'
 import ActivityCard from '../components/ActivityCard.vue'
+import ActivityForm from '../components/ActivityForm.vue'
 import TailNode from '../components/TailNode.vue'
 
 const store = usePipelineStore()
+const route = useRoute()
+const router = useRouter()
 
 const searchQ = ref('')
+const viewMode = ref('candidate')
+const filterDrawerVisible = ref(false)
 const expandedId = ref(null)
 const activitiesMap = reactive({})
 const loadingActivityId = ref(null)
 const inlineMode = reactive({})
 const inlineData = reactive({})
-const rejectedLinks = reactive(new Set())  // 记录刚被淘汰的 link，展示复制拒信
+const emailConfigured = ref(false)
+const emailConfigLoading = ref(false)
+const filters = reactive({ job: '', stage: '', staleDays: null })
+const editFormRef = ref(null)
+const editingType = ref('note')
+const editingLinkId = ref(null)
+const editingActivityId = ref(null)
+const editingContextLinkId = ref(null)
 
 const WITHDRAW_REASONS = ['候选人主动放弃', '薪资谈不拢', '接受其他 Offer', '个人原因', '岗位暂停', '其他']
-const REJECT_REASONS = ['技术能力不达标', '经验不匹配', '文化/价值观不符', '背调有问题', '薪资期望过高', '其他']
+const staleDayOptions = [1, 3, 7, 14]
 
+const jobOptions = computed(() => Array.from(new Set(store.activeLinks.map(l => l.job_title).filter(Boolean))).sort())
+const stageOptions = computed(() => Array.from(new Set(store.activeLinks.map(l => l.stage).filter(Boolean))).sort())
 const filteredLinks = computed(() => {
-  if (!searchQ.value) return store.activeLinks
-  const q = searchQ.value.toLowerCase()
-  return store.activeLinks.filter(l =>
-    (l.candidate_name || '').toLowerCase().includes(q) ||
-    (l.job_title || '').toLowerCase().includes(q)
-  )
+  const q = searchQ.value.trim().toLowerCase()
+  return store.activeLinks.filter(l => {
+    if (q) {
+      const hit = (l.candidate_name || '').toLowerCase().includes(q) ||
+        (l.job_title || '').toLowerCase().includes(q)
+      if (!hit) return false
+    }
+    if (filters.job && l.job_title !== filters.job) return false
+    if (filters.stage && l.stage !== filters.stage) return false
+    if (filters.staleDays !== null && filters.staleDays !== '') {
+      const days = Number(filters.staleDays)
+      if ((l.days_since_update ?? -1) < days) return false
+    }
+    return true
+  })
 })
 
-const groupedByJob = computed(() => {
+function getGroupMeta(link) {
+  if (viewMode.value === 'job') {
+    return { key: `job-${link.job_id}`, title: link.job_title || '未知岗位' }
+  }
+  if (viewMode.value === 'stage') {
+    return { key: `stage-${link.stage || '未知阶段'}`, title: link.stage || '未知阶段' }
+  }
+  return { key: `candidate-${link.candidate_id}`, title: link.candidate_name || `候选人#${link.candidate_id}` }
+}
+
+const groupedLinks = computed(() => {
   const groups = {}
   for (const link of filteredLinks.value) {
-    const key = link.job_id
+    const { key, title } = getGroupMeta(link)
     if (!groups[key]) {
-      groups[key] = { jobId: key, jobTitle: link.job_title || '未知岗位', links: [] }
+      groups[key] = { key, title, links: [] }
     }
     groups[key].links.push(link)
   }
-  return Object.values(groups).sort((a, b) => a.jobTitle.localeCompare(b.jobTitle))
+  return Object.values(groups).sort((a, b) => a.title.localeCompare(b.title))
 })
+const inviteTooltip = computed(() => (emailConfigured.value ? '发送面试邀约邮件' : '请先在设置页配置邮件'))
 
 function staleBadgeClass(link) {
   const days = link.days_since_update
@@ -259,21 +313,78 @@ function openWithdrawForm(link) {
   inlineData[link.id].comment = ''
 }
 
-function openRejectForm(link) {
-  inlineMode[link.id] = 'reject'
-  if (!inlineData[link.id]) inlineData[link.id] = {}
-  inlineData[link.id].reason = ''
-  inlineData[link.id].comment = ''
-}
-
 function closeInlineForm(linkId) {
   delete inlineMode[linkId]
+}
+
+function resetFilters() {
+  filters.job = ''
+  filters.stage = ''
+  filters.staleDays = null
+}
+
+function buildActivityPrefill(activity) {
+  const p = activity.payload || {}
+  return {
+    actor: activity.actor || '',
+    comment: p.comment || p.notes || activity.comment || '',
+    conclusion: p.conclusion || activity.conclusion || '',
+    rejection_reason: p.rejection_reason || activity.rejection_reason || '',
+    round: p.round || activity.round || '',
+    scheduled_at: p.scheduled_at ? new Date(p.scheduled_at) : (activity.scheduled_at ? new Date(activity.scheduled_at) : null),
+    location: p.location || activity.location || '',
+    status: p.status || activity.status || '',
+    score: p.score || activity.score || 0,
+    monthly_salary: p.monthly_salary ?? '',
+    salary_months: p.salary_months ?? '',
+    other_cash: p.other_cash || '',
+    start_date: p.start_date ? new Date(p.start_date) : (activity.start_date ? new Date(activity.start_date) : null),
+    salary: p.salary || activity.salary || '',
+  }
+}
+
+async function openActivityEditor(activity, fallbackLinkId = null) {
+  if (!['resume_review', 'interview', 'offer', 'background_check', 'onboard', 'note'].includes(activity.type)) {
+    ElMessage.warning('该类型记录暂不支持编辑')
+    return
+  }
+  editingType.value = activity.type
+  editingLinkId.value = activity.link_id || fallbackLinkId
+  editingActivityId.value = activity.id
+  editingContextLinkId.value = editingLinkId.value
+  await nextTick()
+  editFormRef.value?.open(buildActivityPrefill(activity))
+}
+
+async function handleActivityEdited() {
+  const linkId = editingContextLinkId.value
+  if (linkId) {
+    await loadActivities(linkId)
+  }
+  await store.fetchActive()
 }
 
 // ── 邀约邮件 ──────────────────────────────────────────────────
 const sendingInvite = reactive({})
 
+async function loadEmailConfigStatus() {
+  emailConfigLoading.value = true
+  try {
+    const cfg = await settingsApi.getEmail()
+    emailConfigured.value = Boolean(cfg.smtp_host && cfg.smtp_user && cfg.smtp_password_masked)
+  } catch {
+    emailConfigured.value = false
+  } finally {
+    emailConfigLoading.value = false
+  }
+}
+
 async function sendInviteEmail(link) {
+  if (!emailConfigured.value) {
+    ElMessage.warning('请先在设置页完成 SMTP 配置')
+    router.push('/settings')
+    return
+  }
   sendingInvite[link.id] = true
   try {
     await ElMessageBox.confirm(
@@ -287,7 +398,9 @@ async function sendInviteEmail(link) {
     if (e === 'cancel') return
     const detail = e.response?.data?.detail || ''
     if (detail === 'SMTP_NOT_CONFIGURED') {
+      emailConfigured.value = false
       ElMessage.warning('请先在设置页配置邮件发送')
+      router.push('/settings')
     } else if (detail.includes('未填写邮箱')) {
       ElMessage.warning('候选人未填写邮箱，无法发送')
     } else {
@@ -324,28 +437,6 @@ async function copyResumeSummary(link) {
   }
 }
 
-// ── 拒信复制 ──────────────────────────────────────────────────
-const DEFAULT_REJECTION_TEMPLATE = `尊敬的 {{candidate_name}}，\n\n感谢您对【{{job_title}}】职位的关注和投入。\n\n经过慎重评估，我们遗憾地通知您，本次未能与您进一步推进流程。希望您在求职过程中一切顺利。\n\n祝好，\n招聘团队`
-
-async function copyRejectionText(link) {
-  // 尝试从 settings 读取模板，失败则用默认
-  let template = DEFAULT_REJECTION_TEMPLATE
-  try {
-    const { settingsApi } = await import('../api/settings')
-    const cfg = await settingsApi.getEmail()
-    if (cfg.rejection_template) template = cfg.rejection_template
-  } catch {}
-  const text = template
-    .replace(/\{\{candidate_name\}\}/g, link.candidate_name || '')
-    .replace(/\{\{job_title\}\}/g, link.job_title || '')
-  try {
-    await navigator.clipboard.writeText(text)
-    ElMessage.success('已复制')
-  } catch {
-    ElMessage.error('复制失败，请手动复制')
-  }
-}
-
 async function saveNote(link) {
   const comment = inlineData[link.id]?.comment?.trim()
   if (!comment) { ElMessage.warning('请输入备注内容'); return }
@@ -368,37 +459,36 @@ async function saveWithdraw(link) {
   ElMessage.success('已标记退出')
 }
 
-async function saveReject(link) {
-  const reason = inlineData[link.id]?.reason
-  if (!reason) { ElMessage.warning('请选择淘汰原因'); return }
-  await pipelineApi.reject(link.id, {
-    reason,
-    comment: inlineData[link.id]?.comment || '',
-  })
-  closeInlineForm(link.id)
-  store.removeLink(link.id)
-  expandedId.value = null
-  ElMessage.success('已标记淘汰')
-  // 淘汰后提示复制拒信
-  try {
-    await ElMessageBox.confirm('是否复制拒信文本？', '淘汰成功', {
-      confirmButtonText: '复制拒信',
-      cancelButtonText: '跳过',
-      type: 'success',
-    })
-    await copyRejectionText(link)
-  } catch {}
-}
-
 async function refresh() {
   await store.fetchActive()
+  await loadEmailConfigStatus()
   // Clear cached activities so they refresh on re-expand
   Object.keys(activitiesMap).forEach(k => delete activitiesMap[k])
 }
 
-onMounted(() => {
-  store.fetchActive()
+async function expandLinkFromRoute() {
+  const linkId = Number(route.query.link_id)
+  if (!Number.isFinite(linkId) || linkId <= 0) return
+  const target = store.activeLinks.find(l => l.id === linkId)
+  if (!target) return
+  expandedId.value = target.id
+  if (!activitiesMap[target.id]) {
+    await loadActivities(target.id)
+  }
+}
+
+onMounted(async () => {
+  await store.fetchActive()
+  await loadEmailConfigStatus()
+  await expandLinkFromRoute()
 })
+
+watch(
+  () => route.query.link_id,
+  async () => {
+    await expandLinkFromRoute()
+  }
+)
 </script>
 
 <style scoped>
@@ -493,6 +583,15 @@ onMounted(() => {
   color: #222;
 }
 
+.cc-sub {
+  font-size: 12px;
+  color: #888;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .cc-right {
   display: flex;
   align-items: center;
@@ -539,6 +638,7 @@ onMounted(() => {
 .inline-actions {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
   padding-top: 8px;
   border-top: 1px solid #f5f5f5;
   margin-top: 8px;
@@ -550,5 +650,11 @@ onMounted(() => {
   background: #fafafa;
   border-radius: 8px;
   border: 1px solid #e8e8e8;
+}
+
+.drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 </style>

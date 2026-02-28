@@ -2,12 +2,13 @@
   <div class="tail-node">
     <!-- State A: Interview upcoming -->
     <template v-if="state === 'INTERVIEW_UPCOMING'">
-      <ActivityCard :activity="tail" />
+      <ActivityCard :activity="tail" :editable="true" @edit="emitEdit(tail)" />
       <el-button size="small" style="margin-top: 8px" @click="cancelInterview">取消面试</el-button>
     </template>
 
     <!-- State B: Interview past due — show fill-in form -->
     <template v-else-if="state === 'INTERVIEW_PAST_DUE'">
+      <ActivityCard :activity="tail" :editable="true" @edit="emitEdit(tail)" />
       <div class="feedback-prompt">
         <el-tag type="warning" size="small">面试时间已过，请填写面评</el-tag>
       </div>
@@ -22,7 +23,7 @@
         <el-form-item v-if="ivForm.conclusion" label="评分">
           <el-rate v-model="ivForm.score" :max="5" />
         </el-form-item>
-        <el-form-item label="备注">
+        <el-form-item label="面评内容">
           <el-input v-model="ivForm.comment" type="textarea" :rows="2" />
         </el-form-item>
         <el-form-item>
@@ -47,7 +48,7 @@
     <!-- State IN_PROGRESS: Offer pending -->
     <template v-else-if="state === 'IN_PROGRESS' && tail.type === 'offer'">
       <div class="offer-inline">
-        <ActivityCard :activity="tail" />
+        <ActivityCard :activity="tail" :editable="true" @edit="emitEdit(tail)" />
         <el-button size="small" type="primary" plain style="margin-top: 8px" @click="editingOffer = true">
           编辑 Offer 结论
         </el-button>
@@ -69,27 +70,11 @@
 
     <!-- State COMPLETED -->
     <template v-else-if="state === 'COMPLETED'">
-      <ActivityCard :activity="tail" />
+      <ActivityCard :activity="tail" :editable="true" @edit="emitEdit(tail)" />
 
-      <!-- Next step options -->
+      <!-- Next step picker -->
       <div v-if="nextOptions.length" class="next-step-row">
-        <span class="next-label">下一步：</span>
-        <div class="next-options">
-          <el-button
-            v-for="opt in nextOptions"
-            :key="opt.type"
-            size="small"
-            @click="startNext(opt.type)"
-          >
-            {{ opt.label }}
-          </el-button>
-        </div>
-      </div>
-
-      <!-- Onboard option (after offer accepted) -->
-      <div v-if="showOnboard" class="next-step-row">
-        <span class="next-label">下一步：</span>
-        <el-button size="small" type="success" @click="openOnboardForm">确认入职</el-button>
+        <el-button size="small" type="primary" @click="openNextStepPicker">选择下一步</el-button>
       </div>
     </template>
 
@@ -134,6 +119,23 @@
         <el-button type="danger" :loading="saving" @click="confirmReject">确认淘汰</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="nextStepDialogVisible" title="选择下一步" width="360px">
+      <el-radio-group v-model="selectedNextType" style="display: flex; flex-direction: column; gap: 8px">
+        <el-radio
+          v-for="opt in nextOptions"
+          :key="opt.type"
+          :label="opt.type"
+          border
+        >
+          {{ opt.label }}
+        </el-radio>
+      </el-radio-group>
+      <template #footer>
+        <el-button @click="nextStepDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmNextStep">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -141,7 +143,6 @@
 import { ref, computed, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import { activitiesApi } from '../api/activities'
-import { pipelineApi } from '../api/pipeline'
 import ActivityCard from './ActivityCard.vue'
 import ActivityForm from './ActivityForm.vue'
 const props = defineProps({
@@ -150,7 +151,7 @@ const props = defineProps({
   allActivities: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['refresh', 'removed'])
+const emit = defineEmits(['refresh', 'removed', 'edit-activity'])
 
 const REJECT_REASONS = ['技术能力不达标', '经验不匹配', '文化/价值观不符', '背调有问题', '薪资期望过高', '其他']
 
@@ -165,7 +166,10 @@ const onboardDialogVisible = ref(false)
 const onboardForm = reactive({ start_date: null, monthly_salary: null })
 const rejectDialogVisible = ref(false)
 const rejectReason = ref('')
+const rejectFromInterview = ref(false)
 const rrActor = ref(props.tail.actor || '')
+const nextStepDialogVisible = ref(false)
+const selectedNextType = ref('')
 
 const state = computed(() => {
   const tail = props.tail
@@ -193,40 +197,57 @@ const tailConclusion = computed(() => {
   return p.conclusion || props.tail.conclusion
 })
 
-const showOnboard = computed(() =>
-  state.value === 'COMPLETED' &&
-  props.tail.type === 'offer' &&
-  tailConclusion.value === '接受'
-)
-
 const nextOptions = computed(() => {
   if (state.value !== 'COMPLETED') return []
-  if (showOnboard.value) return []
-  if (tailConclusion.value !== '通过' && tailConclusion.value !== '接受') return []
-
-  if (['resume_review', 'background_check'].includes(props.tail.type)) {
-    return [
-      { type: 'interview', label: '安排面试' },
-      { type: 'offer', label: '发Offer' },
-      { type: 'background_check', label: '背调' },
-    ]
+  if (props.tail.type === 'resume_review' && tailConclusion.value === '通过') {
+    return [{ type: 'interview', label: '安排面试' }]
   }
-  if (props.tail.type === 'interview') {
+  if (props.tail.type === 'interview' && tailConclusion.value === '通过') {
     return [
       { type: 'interview', label: '下一轮面试' },
       { type: 'offer', label: '发Offer' },
-      { type: 'background_check', label: '背调' },
     ]
+  }
+  if (props.tail.type === 'offer' && tailConclusion.value === '接受') {
+    return [
+      { type: 'background_check', label: '背调' },
+      { type: 'onboard', label: '确认入职' },
+    ]
+  }
+  if (props.tail.type === 'background_check' && tailConclusion.value === '通过') {
+    return [{ type: 'onboard', label: '确认入职' }]
   }
   return []
 })
 
 function startNext(type) {
+  if (type === 'onboard') {
+    openOnboardForm()
+    return
+  }
   nextFormType.value = type
   const autoRound = type === 'interview'
     ? `第${props.allActivities.filter(a => a.type === 'interview').length + 1}轮面试`
     : ''
   actFormRef.value?.open({ round: autoRound })
+}
+
+function openNextStepPicker() {
+  selectedNextType.value = nextOptions.value[0]?.type || ''
+  nextStepDialogVisible.value = true
+}
+
+function confirmNextStep() {
+  if (!selectedNextType.value) {
+    ElMessage.warning('请选择下一步')
+    return
+  }
+  nextStepDialogVisible.value = false
+  startNext(selectedNextType.value)
+}
+
+function emitEdit(activity) {
+  emit('edit-activity', activity)
 }
 
 async function cancelInterview() {
@@ -241,14 +262,16 @@ async function cancelInterview() {
 
 async function saveIvFeedback() {
   if (!ivForm.conclusion) { ElMessage.warning('请选择结论'); return }
+  if (ivForm.conclusion === '淘汰') {
+    rejectFromInterview.value = true
+    rejectReason.value = ''
+    rejectDialogVisible.value = true
+    return
+  }
   saving.value = true
   try {
     await activitiesApi.update(props.tail.id, { ...ivForm, status: 'completed' })
-    if (ivForm.conclusion === '淘汰') {
-      rejectDialogVisible.value = true
-    } else {
-      emit('refresh')
-    }
+    emit('refresh')
   } finally {
     saving.value = false
   }
@@ -265,19 +288,34 @@ async function rrPass() {
   }
 }
 
-function rrReject() {
+async function rrReject() {
   if (!rrActor.value.trim()) { ElMessage.warning('请填写筛选人'); return }
-  activitiesApi.update(props.tail.id, { actor: rrActor.value.trim() }).then(() => {
-    rejectDialogVisible.value = true
-  })
+  rejectFromInterview.value = false
+  rejectReason.value = ''
+  rejectDialogVisible.value = true
 }
 
 async function confirmReject() {
   if (!rejectReason.value) { ElMessage.warning('请选择淘汰原因'); return }
   saving.value = true
   try {
-    await pipelineApi.reject(props.link.id, { reason: rejectReason.value })
+    if (rejectFromInterview.value) {
+      await activitiesApi.update(props.tail.id, {
+        ...ivForm,
+        status: 'completed',
+        conclusion: '淘汰',
+        rejection_reason: rejectReason.value,
+      })
+    } else {
+      await activitiesApi.update(props.tail.id, {
+        actor: rrActor.value.trim(),
+        status: 'completed',
+        conclusion: '淘汰',
+        rejection_reason: rejectReason.value,
+      })
+    }
     rejectDialogVisible.value = false
+    rejectReason.value = ''
     emit('removed')
   } finally {
     saving.value = false
@@ -370,23 +408,9 @@ function onActivitySaved() {
 .next-step-row {
   display: flex;
   align-items: center;
-  gap: 10px;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px dashed #e8e8e8;
-  flex-wrap: wrap;
-}
-
-.next-label {
-  font-size: 13px;
-  color: #888;
-  white-space: nowrap;
-}
-
-.next-options {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
 }
 
 </style>
