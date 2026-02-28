@@ -22,7 +22,7 @@
         <el-option label="暂不考虑" value="not_now" />
       </el-select>
       <el-checkbox v-model="filterStarred" label="只看星标" @change="fetchCandidates" />
-      <el-button type="primary" @click="openUpload">导入简历</el-button>
+      <el-button type="primary" @click="createDialogVisible = true">新建候选人</el-button>
     </div>
 
     <div v-if="loading" class="loading-wrap">
@@ -78,22 +78,6 @@
 
     <el-empty v-if="!loading && !candidates.length" description="暂无候选人" />
 
-    <!-- Resume upload dialog -->
-    <el-dialog v-model="uploadDialogVisible" title="导入简历" width="460px">
-      <el-upload
-        drag
-        action="/api/resume/upload"
-        :on-success="onUploadSuccess"
-        :on-error="onUploadError"
-        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-        :limit="1"
-      >
-        <el-icon style="font-size: 48px; color: #bbb"><UploadFilled /></el-icon>
-        <div style="margin-top: 8px; color: #666">拖拽或点击上传简历</div>
-        <div style="font-size: 12px; color: #aaa; margin-top: 4px">支持 PDF / Word / 图片</div>
-      </el-upload>
-    </el-dialog>
-
     <!-- Candidate detail drawer -->
     <CandidateDetail
       v-if="selectedCandidate"
@@ -101,15 +85,17 @@
       @close="selectedCandidate = null"
       @updated="fetchCandidates"
     />
+
+    <CreateCandidateDialog v-model="createDialogVisible" @created="fetchCandidates" />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
 import { candidatesApi } from '../api/candidates'
 import { debounce } from '../api/utils'
 import CandidateDetail from '../components/CandidateDetail.vue'
+import CreateCandidateDialog from '../components/CreateCandidateDialog.vue'
 
 const candidates = ref([])
 const loading = ref(false)
@@ -117,7 +103,7 @@ const searchQ = ref('')
 const filterEducation = ref('')
 const filterFollowup = ref('')
 const filterStarred = ref(false)
-const uploadDialogVisible = ref(false)
+const createDialogVisible = ref(false)
 const selectedCandidate = ref(null)
 
 async function fetchCandidates() {
@@ -140,20 +126,6 @@ const debouncedFetch = debounce(fetchCandidates, 250)
 
 function openDetail(c) {
   selectedCandidate.value = c
-}
-
-function openUpload() {
-  uploadDialogVisible.value = true
-}
-
-function onUploadSuccess(res) {
-  ElMessage.success('简历解析成功，已创建候选人')
-  uploadDialogVisible.value = false
-  fetchCandidates()
-}
-
-function onUploadError() {
-  ElMessage.error('简历上传失败，请重试')
 }
 
 onMounted(fetchCandidates)

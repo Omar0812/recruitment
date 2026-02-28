@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: 人才库页面 Vue 组件
 `frontend/src/pages/Talent.vue` SHALL 实现人才库页面，对应现有 `#/talent` 路由，支持搜索、筛选、查看候选人详情。toolbar 中的「导入简历」按钮 SHALL 替换为「新建候选人」，点击打开 `CreateCandidateDialog` 组件，原有内联 `el-dialog` + `el-upload` 实现 SHALL 删除。
@@ -10,10 +10,6 @@
 #### Scenario: 搜索过滤
 - **WHEN** 用户在搜索框输入关键词
 - **THEN** 列表实时过滤（或重新请求 /api/candidates?q=），展示匹配候选人
-
-#### Scenario: 黑名单显示切换
-- **WHEN** 用户勾选「显示黑名单」
-- **THEN** 调用 `GET /api/candidates?show_blacklisted=true`，显示黑名单候选人（红色标识）
 
 #### Scenario: 点击「新建候选人」打开统一弹窗
 - **WHEN** 用户在人才库 toolbar 点击「新建候选人」

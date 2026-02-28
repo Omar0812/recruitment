@@ -24,7 +24,14 @@
         @click="store.fetchToday()"
         style="margin-left: auto"
       >刷新</el-button>
+      <el-button
+        size="small"
+        type="primary"
+        @click="createDialogVisible = true"
+      >新建候选人</el-button>
     </div>
+
+    <CreateCandidateDialog v-model="createDialogVisible" />
 
     <div v-if="store.loading" class="loading-wrap">
       <el-skeleton :rows="5" animated />
@@ -224,6 +231,7 @@ import { ElMessage } from 'element-plus'
 import { useTodayStore } from '../stores/today'
 import { activitiesApi } from '../api/activities'
 import ActivityForm from '../components/ActivityForm.vue'
+import CreateCandidateDialog from '../components/CreateCandidateDialog.vue'
 
 const store = useTodayStore()
 const router = useRouter()
@@ -240,6 +248,7 @@ const offerDialogVisible = ref(false)
 const offerConclusion = ref('')
 const offerLoading = ref(false)
 const selectedOfferItem = ref(null)
+const createDialogVisible = ref(false)
 
 function toggleExpand(item) {
   item._expanded = !item._expanded

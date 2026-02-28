@@ -1,0 +1,1 @@
+import{a as s}from"./base-BoBzdrvO.js";const p={list:o=>s.get("/jobs",o),get:o=>s.get(`/jobs/${o}`),create:o=>s.post("/jobs",o),update:(o,e)=>s.patch(`/jobs/${o}`,e),close:(o,e)=>s.post(`/jobs/${o}/close`,e),reopen:o=>s.post(`/jobs/${o}/reopen`)};export{p as j};
