@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 from app.database import get_db
@@ -10,6 +10,10 @@ from app.schemas import SupplierOut
 router = APIRouter(prefix="/api/suppliers", tags=["suppliers"])
 
 
+def _is_headhunter(supplier_type: Optional[str]) -> bool:
+    return bool(supplier_type and "猎头" in supplier_type)
+
+
 class SupplierCreate(BaseModel):
     name: str
     type: Optional[str] = None
@@ -17,9 +21,7 @@ class SupplierCreate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     notes: Optional[str] = None
-    fee_rate: Optional[str] = None
-    fee_guarantee_days: Optional[int] = None
-    payment_notes: Optional[str] = None
+    fee_guarantee_days: Optional[int] = Field(default=None, ge=0)
 
 
 class SupplierUpdate(BaseModel):
@@ -29,13 +31,14 @@ class SupplierUpdate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     notes: Optional[str] = None
-    fee_rate: Optional[str] = None
-    fee_guarantee_days: Optional[int] = None
-    payment_notes: Optional[str] = None
+    fee_guarantee_days: Optional[int] = Field(default=None, ge=0)
 
 
 def _supplier_out(s: Supplier) -> dict:
-    return SupplierOut.model_validate(s).model_dump()
+    data = SupplierOut.model_validate(s).model_dump()
+    if not _is_headhunter(data.get("type")):
+        data["fee_guarantee_days"] = None
+    return data
 
 
 @router.get("")
@@ -48,6 +51,7 @@ def list_suppliers(q: Optional[str] = Query(None), db: Session = Depends(get_db)
 
 @router.post("")
 def create_supplier(data: SupplierCreate, db: Session = Depends(get_db)):
+    guarantee_days = data.fee_guarantee_days if _is_headhunter(data.type) else None
     s = Supplier(
         name=data.name,
         type=data.type,
@@ -55,9 +59,7 @@ def create_supplier(data: SupplierCreate, db: Session = Depends(get_db)):
         phone=data.phone,
         email=data.email,
         notes=data.notes,
-        fee_rate=data.fee_rate,
-        fee_guarantee_days=data.fee_guarantee_days,
-        payment_notes=data.payment_notes,
+        fee_guarantee_days=guarantee_days,
     )
     db.add(s)
     db.commit()
@@ -70,7 +72,13 @@ def update_supplier(supplier_id: int, data: SupplierUpdate, db: Session = Depend
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="供应商不存在")
-    for field, val in data.model_dump(exclude_unset=True).items():
+    payload = data.model_dump(exclude_unset=True)
+    next_type = payload.get("type", s.type)
+    if "fee_guarantee_days" in payload:
+        payload["fee_guarantee_days"] = payload["fee_guarantee_days"] if _is_headhunter(next_type) else None
+    elif not _is_headhunter(next_type):
+        payload["fee_guarantee_days"] = None
+    for field, val in payload.items():
         setattr(s, field, val)
     db.commit()
     db.refresh(s)

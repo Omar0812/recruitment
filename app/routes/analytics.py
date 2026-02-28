@@ -4,7 +4,7 @@ from sqlalchemy import func
 from datetime import datetime, date
 
 from app.database import get_db
-from app.models import ActivityRecord, CandidateJobLink, Candidate, Job, Supplier
+from app.models import ActivityRecord, CandidateJobLink, Candidate, Job
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -204,11 +204,11 @@ def get_dashboard(period: str = "all", db: Session = Depends(get_db)):
         .all()
     )
 
-    source_map = {}  # source -> {candidates, interviewed, hired, fee_total}
+    source_map = {}  # source -> {candidates, interviewed, hired}
     for cand in all_candidates:
         source = cand.source or "未知来源"
         if source not in source_map:
-            source_map[source] = {"candidates": 0, "interviewed": 0, "hired": 0, "fee_total": 0.0}
+            source_map[source] = {"candidates": 0, "interviewed": 0, "hired": 0}
 
         source_map[source]["candidates"] += 1
 
@@ -225,22 +225,6 @@ def get_dashboard(period: str = "all", db: Session = Depends(get_db)):
         hired_links_for_cand = [lnk for lnk in cand.job_links if lnk.state == "HIRED"]
         if hired_links_for_cand:
             source_map[source]["hired"] += 1
-            # calculate fee if supplier exists
-            if cand.supplier and cand.supplier.fee_rate:
-                for lnk in hired_links_for_cand:
-                    # look for monthly_salary in onboard activity payload
-                    onboard = next((ar for ar in lnk.activity_records if ar.type == "onboard"), None)
-                    if onboard:
-                        p = onboard.payload or {}
-                        monthly_salary = p.get("monthly_salary") or onboard.salary
-                        fee_rate_str = cand.supplier.fee_rate
-                        try:
-                            fee_rate = float(fee_rate_str.strip().rstrip("%"))
-                            if monthly_salary:
-                                fee = float(monthly_salary) * 12 * fee_rate / 100
-                                source_map[source]["fee_total"] += fee
-                        except (ValueError, TypeError):
-                            pass
 
     channel_roi = [
         {
@@ -248,7 +232,6 @@ def get_dashboard(period: str = "all", db: Session = Depends(get_db)):
             "candidates": data["candidates"],
             "interviewed": data["interviewed"],
             "hired": data["hired"],
-            "fee_total": round(data["fee_total"]) if data["fee_total"] else None,
         }
         for source, data in source_map.items()
     ]

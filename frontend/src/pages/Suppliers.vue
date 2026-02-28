@@ -14,14 +14,9 @@
       <el-table-column prop="type" label="类型" width="100" />
       <el-table-column prop="contact_name" label="联系人" width="100" />
       <el-table-column prop="phone" label="电话" width="130" />
-      <el-table-column label="费率" width="90">
-        <template #default="{ row }">
-          {{ row.fee_rate ? `${row.fee_rate}%` : '—' }}
-        </template>
-      </el-table-column>
       <el-table-column label="保证期" width="90">
         <template #default="{ row }">
-          {{ row.fee_guarantee_days ? `${row.fee_guarantee_days}天` : '—' }}
+          {{ isHeadhunterType(row.type) && row.fee_guarantee_days ? `${row.fee_guarantee_days}天` : '—' }}
         </template>
       </el-table-column>
       <el-table-column label="操作" width="120" align="right">
@@ -56,14 +51,8 @@
         <el-form-item label="邮箱">
           <el-input v-model="form.email" />
         </el-form-item>
-        <el-form-item label="费率(%)">
-          <el-input-number v-model="form.fee_rate" :precision="1" :step="0.5" :min="0" :max="100" />
-        </el-form-item>
-        <el-form-item label="保证期(天)">
+        <el-form-item v-if="isHeadhunterType(form.type)" label="保证期(天)">
           <el-input-number v-model="form.fee_guarantee_days" :min="0" />
-        </el-form-item>
-        <el-form-item label="付款说明">
-          <el-input v-model="form.payment_notes" type="textarea" :rows="2" />
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="form.notes" type="textarea" :rows="2" />
@@ -78,7 +67,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { suppliersApi } from '../api/suppliers'
 
@@ -90,8 +79,12 @@ const editItem = ref(null)
 
 const form = reactive({
   name: '', type: '', contact_name: '', phone: '', email: '',
-  fee_rate: null, fee_guarantee_days: null, payment_notes: '', notes: '',
+  fee_guarantee_days: null, notes: '',
 })
+
+function isHeadhunterType(type) {
+  return !!type && String(type).includes('猎头')
+}
 
 async function fetchSuppliers() {
   loading.value = true
@@ -106,8 +99,9 @@ function openForm(item) {
   editItem.value = item
   Object.assign(form, item
     ? { ...item }
-    : { name: '', type: '', contact_name: '', phone: '', email: '', fee_rate: null, fee_guarantee_days: null, payment_notes: '', notes: '' }
+    : { name: '', type: '', contact_name: '', phone: '', email: '', fee_guarantee_days: null, notes: '' }
   )
+  if (!isHeadhunterType(form.type)) form.fee_guarantee_days = null
   formVisible.value = true
 }
 
@@ -134,6 +128,10 @@ async function deleteSupplier(item) {
   ElMessage.success('已删除')
   await fetchSuppliers()
 }
+
+watch(() => form.type, (type) => {
+  if (!isHeadhunterType(type)) form.fee_guarantee_days = null
+})
 
 onMounted(fetchSuppliers)
 </script>

@@ -117,11 +117,6 @@
             placeholder="元/月"
           />
         </el-form-item>
-        <!-- 猎头费预览（仅有 supplier 时显示） -->
-        <div v-if="link.supplier_name && link.supplier_fee_rate && onboardForm.monthly_salary" class="fee-preview">
-          <span class="fee-preview-label">猎头来源：{{ link.supplier_name }} · 费率：{{ link.supplier_fee_rate }}%</span>
-          <span class="fee-preview-amount">应付猎头费：¥{{ calcFeePreview }}</span>
-        </div>
       </el-form>
       <template #footer>
         <el-button @click="onboardDialogVisible = false">取消</el-button>
@@ -203,13 +198,6 @@ const showOnboard = computed(() =>
   props.tail.type === 'offer' &&
   tailConclusion.value === '接受'
 )
-
-const calcFeePreview = computed(() => {
-  const ms = onboardForm.monthly_salary
-  const fr = props.link.supplier_fee_rate
-  if (!ms || !fr) return null
-  return Math.round(ms * 12 * fr / 100).toLocaleString()
-})
 
 const nextOptions = computed(() => {
   if (state.value !== 'COMPLETED') return []
@@ -401,23 +389,4 @@ function onActivitySaved() {
   flex-wrap: wrap;
 }
 
-.fee-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  background: #f6ffed;
-  border: 1px solid #b7eb8f;
-  border-radius: 8px;
-  margin: 0 0 12px 0;
-}
-.fee-preview-label {
-  font-size: 12px;
-  color: #52c41a;
-}
-.fee-preview-amount {
-  font-size: 15px;
-  font-weight: 700;
-  color: #389e0d;
-}
 </style>

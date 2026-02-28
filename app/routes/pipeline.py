@@ -120,12 +120,6 @@ def get_active_pipeline(db: Session = Depends(get_db)):
     result = []
     for lnk in links:
         supplier = lnk.candidate.supplier if lnk.candidate else None
-        fee_rate = None
-        if supplier and supplier.fee_rate:
-            try:
-                fee_rate = float(supplier.fee_rate)
-            except (ValueError, TypeError):
-                fee_rate = None
         result.append({
             "id": lnk.id,
             "candidate_id": lnk.candidate_id,
@@ -138,7 +132,6 @@ def get_active_pipeline(db: Session = Depends(get_db)):
             "days_since_update": (datetime.utcnow() - lnk.updated_at).days if lnk.updated_at else None,
             "notes": lnk.notes,
             "supplier_name": supplier.name if supplier else None,
-            "supplier_fee_rate": fee_rate,
         })
     return result
 
@@ -182,22 +175,6 @@ def get_hired_pipeline(db: Session = Depends(get_db)):
         supplier_name = supplier.name if supplier else None
         guarantee_days = supplier.fee_guarantee_days if supplier else None
 
-        # fee_rate 转换
-        fee_rate = None
-        if supplier and supplier.fee_rate:
-            try:
-                fee_rate = float(supplier.fee_rate)
-            except (ValueError, TypeError):
-                fee_rate = None
-
-        # 猎头费计算
-        fee_amount = None
-        if monthly_salary and fee_rate is not None:
-            try:
-                fee_amount = round(float(monthly_salary) * 12 * fee_rate / 100)
-            except (ValueError, TypeError):
-                fee_amount = None
-
         result.append({
             "id": lnk.id,
             "candidate_id": lnk.candidate_id,
@@ -211,8 +188,6 @@ def get_hired_pipeline(db: Session = Depends(get_db)):
             "monthly_salary": monthly_salary,
             "supplier_name": supplier_name,
             "guarantee_days": guarantee_days,
-            "fee_rate": fee_rate,
-            "fee_amount": fee_amount,
         })
     return result
 

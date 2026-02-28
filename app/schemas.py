@@ -39,9 +39,6 @@ class CandidateOut(BaseModel):
 
     # Supplier denormalized fields (populated via model_validator below)
     supplier_name: Optional[str] = None
-    supplier_fee_rate: Optional[str] = None
-    supplier_fee_guarantee_days: Optional[int] = None
-    supplier_payment_notes: Optional[str] = None
 
     @computed_field
     @property
@@ -63,9 +60,6 @@ class CandidateOut(BaseModel):
             supplier = getattr(data, "supplier", None)
             if supplier is not None:
                 data.__dict__.setdefault("supplier_name", supplier.name)
-                data.__dict__.setdefault("supplier_fee_rate", supplier.fee_rate)
-                data.__dict__.setdefault("supplier_fee_guarantee_days", supplier.fee_guarantee_days)
-                data.__dict__.setdefault("supplier_payment_notes", supplier.payment_notes)
             # Normalize bool fields stored as int
             if "starred" in data.__dict__:
                 data.__dict__["starred"] = bool(data.__dict__["starred"])
@@ -190,7 +184,5 @@ class SupplierOut(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     notes: Optional[str] = None
-    fee_rate: Optional[str] = None
     fee_guarantee_days: Optional[int] = None
-    payment_notes: Optional[str] = None
     created_at: Optional[datetime] = None

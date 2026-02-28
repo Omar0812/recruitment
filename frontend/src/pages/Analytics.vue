@@ -95,11 +95,6 @@
             <el-table-column prop="candidates" label="候选人数" width="90" align="center" />
             <el-table-column prop="interviewed" label="进面数" width="80" align="center" />
             <el-table-column prop="hired" label="入职数" width="80" align="center" />
-            <el-table-column label="猎头费合计" width="120" align="right">
-              <template #default="{ row }">
-                {{ row.fee_total != null ? '¥' + row.fee_total.toLocaleString() : '—' }}
-              </template>
-            </el-table-column>
           </el-table>
         </el-tab-pane>
 

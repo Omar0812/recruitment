@@ -52,9 +52,7 @@ class Supplier(Base):
     phone = Column(String)
     email = Column(String)
     notes = Column(Text)
-    fee_rate = Column(Text, nullable=True)
     fee_guarantee_days = Column(Integer, nullable=True)
-    payment_notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     candidates = relationship("Candidate", back_populates="supplier")
