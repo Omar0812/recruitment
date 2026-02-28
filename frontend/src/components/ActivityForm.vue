@@ -44,10 +44,10 @@
           <el-input v-model="form.monthly_salary" placeholder="如：30000" />
         </el-form-item>
         <el-form-item label="年终(月)">
-          <el-input v-model="form.bonus_months" placeholder="如：3" />
+          <el-input v-model="form.salary_months" placeholder="如：3" />
         </el-form-item>
         <el-form-item label="期权/股权">
-          <el-input v-model="form.equity" placeholder="选填" />
+          <el-input v-model="form.other_cash" placeholder="选填" />
         </el-form-item>
         <el-form-item label="入职日期">
           <el-date-picker v-model="form.start_date" type="date" placeholder="选择日期" style="width:100%" />
@@ -79,7 +79,7 @@
         <el-form-item label="结论">
           <el-select v-model="form.conclusion" placeholder="请选择" style="width: 100%">
             <el-option label="通过" value="通过" />
-            <el-option label="有疑点" value="有疑点" />
+            <el-option label="有瑕疵" value="有瑕疵" />
             <el-option label="不通过" value="不通过" />
           </el-select>
         </el-form-item>
@@ -153,8 +153,8 @@ const form = reactive({
   score: 0,
   comment: '',
   monthly_salary: '',
-  bonus_months: '',
-  equity: '',
+  salary_months: '',
+  other_cash: '',
   start_date: null,
   salary: '',
 })
@@ -163,7 +163,7 @@ function open(prefill = {}) {
   Object.assign(form, {
     round: '', actor: '', scheduled_at: null, location: '',
     conclusion: '', score: 0, comment: '',
-    monthly_salary: '', bonus_months: '', equity: '',
+    monthly_salary: '', salary_months: '', other_cash: '',
     start_date: null, salary: '',
   }, prefill)
   visible.value = true
@@ -194,7 +194,7 @@ async function handleSubmit() {
     const payload = { ...form }
     // Remove empty fields
     Object.keys(payload).forEach(k => {
-      if (payload[k] === '' || payload[k] === null || payload[k] === 0) {
+      if (payload[k] === '' || payload[k] === null) {
         delete payload[k]
       }
     })

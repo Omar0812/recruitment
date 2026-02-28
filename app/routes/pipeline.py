@@ -111,7 +111,7 @@ def update_notes(link_id: int, data: NotesUpdate, db: Session = Depends(get_db))
 @router.get("/active")
 def get_active_pipeline(db: Session = Depends(get_db)):
     links = db.query(CandidateJobLink).join(Candidate).filter(
-        CandidateJobLink.outcome == None,
+        CandidateJobLink.outcome.is_(None),
         Candidate.deleted_at.is_(None)
     ).options(
         joinedload(CandidateJobLink.candidate).joinedload(Candidate.supplier),

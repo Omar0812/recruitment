@@ -235,9 +235,9 @@ def get_dashboard(period: str = "all", db: Session = Depends(get_db)):
                         monthly_salary = p.get("monthly_salary") or onboard.salary
                         fee_rate_str = cand.supplier.fee_rate
                         try:
-                            fee_rate = float(fee_rate_str.strip().rstrip("%")) / 100
+                            fee_rate = float(fee_rate_str.strip().rstrip("%"))
                             if monthly_salary:
-                                fee = float(monthly_salary) * 12 * fee_rate
+                                fee = float(monthly_salary) * 12 * fee_rate / 100
                                 source_map[source]["fee_total"] += fee
                         except (ValueError, TypeError):
                             pass

@@ -52,6 +52,9 @@ class ActivityUpdate(BaseModel):
     score: Optional[int] = None
     salary: Optional[str] = None
     start_date: Optional[str] = None
+    monthly_salary: Optional[int] = None
+    salary_months: Optional[int] = None
+    other_cash: Optional[str] = None
 
 
 @router.get("")

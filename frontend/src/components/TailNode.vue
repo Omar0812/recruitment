@@ -319,7 +319,7 @@ function openOnboardForm() {
   const prefill = latestOffer
     ? ((latestOffer.payload || {}).monthly_salary || latestOffer.salary || null)
     : null
-  onboardForm.monthly_salary = prefill ? Number(prefill) : null
+  onboardForm.monthly_salary = (prefill && !isNaN(Number(prefill))) ? Number(prefill) : null
   onboardDialogVisible.value = true
 }
 
@@ -330,13 +330,10 @@ async function saveOnboard() {
     await activitiesApi.create({
       link_id: props.link.id,
       type: 'onboard',
-      start_date: onboardForm.start_date,
-      payload: {
-        start_date: onboardForm.start_date instanceof Date
-          ? onboardForm.start_date.toISOString().split('T')[0]
-          : onboardForm.start_date,
-        monthly_salary: onboardForm.monthly_salary || null,
-      },
+      start_date: onboardForm.start_date instanceof Date
+        ? onboardForm.start_date.toISOString().split('T')[0]
+        : onboardForm.start_date,
+      monthly_salary: onboardForm.monthly_salary || null,
     })
     onboardDialogVisible.value = false
     ElMessage.success('已确认入职')

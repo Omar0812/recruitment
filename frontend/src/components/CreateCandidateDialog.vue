@@ -99,6 +99,7 @@ const nameError = ref(false)
 const parseWarning = ref('')
 const uploadedFileName = ref('')
 const resumePath = ref('')
+const parsedExtra = ref({}) // stores AI-parsed fields not shown in form
 
 const form = reactive({
   name: '',
@@ -118,6 +119,7 @@ function resetState() {
   parseWarning.value = ''
   uploadedFileName.value = ''
   resumePath.value = ''
+  parsedExtra.value = {}
   Object.assign(form, {
     name: '',
     phone: '',
@@ -145,9 +147,24 @@ async function handleFileChange(file) {
     if (parsed.name) form.name = parsed.name
     if (parsed.phone) form.phone = parsed.phone
     if (parsed.email) form.email = parsed.email
-    if (parsed.last_title) form.last_title = parsed.last_title
-    if (parsed.last_company) form.last_company = parsed.last_company
-    if (parsed.education) form.education = parsed.education
+    const work0 = (parsed.work_experience || [])[0]
+    if (work0) {
+      if (work0.title) form.last_title = work0.title
+      if (work0.company) form.last_company = work0.company
+    }
+    const edu0 = (parsed.education_list || [])[0]
+    if (edu0 && edu0.degree) form.education = edu0.degree
+
+    // Store additional parsed fields to pass to backend on submit
+    parsedExtra.value = {
+      name_en: parsed.name_en || undefined,
+      age: parsed.age || undefined,
+      city: parsed.city || undefined,
+      years_exp: parsed.years_exp ?? undefined,
+      skill_tags: parsed.skill_tags?.length ? parsed.skill_tags : undefined,
+      education_list: parsed.education_list?.length ? parsed.education_list : undefined,
+      work_experience: parsed.work_experience?.length ? parsed.work_experience : undefined,
+    }
 
     resumePath.value = data.resume_path || ''
     uploadedFileName.value = file.name
@@ -176,6 +193,7 @@ async function handleSubmit() {
   submitting.value = true
   try {
     const payload = {
+      ...parsedExtra.value,
       name: form.name.trim(),
       phone: form.phone || undefined,
       email: form.email || undefined,

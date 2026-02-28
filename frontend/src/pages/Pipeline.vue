@@ -162,7 +162,6 @@ import { activitiesApi } from '../api/activities'
 import { pipelineApi } from '../api/pipeline'
 import { candidatesApi } from '../api/candidates'
 import { emailApi } from '../api/email'
-import { debounce } from '../api/utils'
 import ActivityCard from '../components/ActivityCard.vue'
 import TailNode from '../components/TailNode.vue'
 
@@ -199,8 +198,6 @@ const groupedByJob = computed(() => {
   }
   return Object.values(groups).sort((a, b) => a.jobTitle.localeCompare(b.jobTitle))
 })
-
-const debouncedSearch = debounce(() => {}, 250)
 
 function staleBadgeClass(link) {
   const days = link.days_since_update

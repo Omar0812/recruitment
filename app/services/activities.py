@@ -75,4 +75,10 @@ def build_payload(type_: str, conclusion, status, data) -> dict:
             "conclusion": conclusion,
             "notes": data.comment,
         }
+    if type_ == "onboard":
+        return {
+            "conclusion": conclusion,
+            "start_date": data.start_date,
+            "monthly_salary": data.monthly_salary,
+        }
     return {"conclusion": conclusion, "comment": data.comment}

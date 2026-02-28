@@ -212,7 +212,7 @@ def update_candidate(candidate_id: int, data: CandidateUpdate, db: Session = Dep
     c = db.query(Candidate).filter(Candidate.id == candidate_id, Candidate.deleted_at.is_(None)).first()
     if not c:
         raise HTTPException(status_code=404, detail="候选人不存在")
-    for field, value in data.model_dump(exclude_none=True).items():
+    for field, value in data.model_dump(exclude_unset=True).items():
         setattr(c, field, value)
     # Auto-fill source from supplier name
     if c.supplier_id:

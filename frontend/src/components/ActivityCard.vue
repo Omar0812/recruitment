@@ -74,8 +74,8 @@ const props = defineProps({
   activity: { type: Object, required: true },
 })
 
-const a = props.activity
-const p = computed(() => a.payload || {})
+const a = computed(() => props.activity)
+const p = computed(() => a.value.payload || {})
 
 const TYPE_LABELS = {
   resume_review: '简历筛选',
@@ -98,21 +98,21 @@ const TYPE_COLORS = {
   background_check: '#fa8c16',
 }
 
-const typeLabel = computed(() => TYPE_LABELS[a.type] || a.type)
+const typeLabel = computed(() => TYPE_LABELS[a.value.type] || a.value.type)
 
 const typeBadgeStyle = computed(() => ({
-  background: (TYPE_COLORS[a.type] || '#666') + '18',
-  color: TYPE_COLORS[a.type] || '#666',
+  background: (TYPE_COLORS[a.value.type] || '#666') + '18',
+  color: TYPE_COLORS[a.value.type] || '#666',
 }))
 
 const roundLabel = computed(() => {
-  if (a.type === 'interview') return p.value.round || a.round || null
+  if (a.value.type === 'interview') return p.value.round || a.value.round || null
   return null
 })
 
 const STATUS_LABELS = { scheduled: '待面试', completed: '已完成', cancelled: '已取消' }
 const statusLabel = computed(() => {
-  const s = p.value.status || a.status
+  const s = p.value.status || a.value.status
   return s ? STATUS_LABELS[s] || s : null
 })
 
