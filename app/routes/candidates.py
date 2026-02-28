@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 import os
+from html import escape
 
 from app.database import get_db
 from app.models import Candidate, HistoryEntry, Supplier, CandidateJobLink, ActivityRecord
@@ -12,6 +13,30 @@ from app.schemas import CandidateOut
 from app.services import candidates as candidates_svc
 
 router = APIRouter(prefix="/api/candidates", tags=["candidates"])
+
+
+def _normalize_tags(tags: Optional[List[str]]) -> List[str]:
+    if not tags:
+        return []
+    seen = set()
+    result = []
+    for item in tags:
+        t = str(item or "").strip()
+        if not t:
+            continue
+        key = t.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(t)
+    return result
+
+
+def _parse_tag_query(tags: Optional[str]) -> List[str]:
+    if not tags:
+        return []
+    parts = [x.strip() for x in tags.replace("，", ",").split(",")]
+    return _normalize_tags(parts)
 
 
 class CandidateCreate(BaseModel):
@@ -34,6 +59,7 @@ class CandidateCreate(BaseModel):
     resume_path: Optional[str] = None
     education_list: Optional[List[dict]] = []
     work_experience: Optional[List[dict]] = []
+    project_experience: Optional[List[dict]] = []
 
 
 class CandidateUpdate(BaseModel):
@@ -56,6 +82,7 @@ class CandidateUpdate(BaseModel):
     followup_status: Optional[str] = None
     education_list: Optional[List[dict]] = None
     work_experience: Optional[List[dict]] = None
+    project_experience: Optional[List[dict]] = None
     starred: Optional[bool] = None
 
 
@@ -131,6 +158,8 @@ def list_candidates(
     q: Optional[str] = Query(None),
     education: Optional[str] = Query(None),
     tag: Optional[str] = Query(None),
+    tags: Optional[str] = Query(None, description="多标签搜索，逗号分隔"),
+    tag_mode: Optional[str] = Query("all", description="标签匹配模式: all/any"),
     followup_status: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
     starred: Optional[bool] = Query(None),
@@ -158,8 +187,24 @@ def list_candidates(
     if starred is True:
         query = query.filter(Candidate.starred == 1)
     candidates = query.order_by(Candidate.created_at.desc()).all()
+    required_tags = _parse_tag_query(tags)
     if tag:
-        candidates = [c for c in candidates if tag in (c.skill_tags or [])]
+        required_tags = _normalize_tags(required_tags + [tag])
+    if required_tags:
+        mode = (tag_mode or "all").lower()
+        if mode not in {"all", "any"}:
+            mode = "all"
+        required_set = set(t.lower() for t in required_tags)
+        if mode == "any":
+            candidates = [
+                c for c in candidates
+                if required_set.intersection(set(x.lower() for x in _normalize_tags(c.skill_tags or [])))
+            ]
+        else:
+            candidates = [
+                c for c in candidates
+                if required_set.issubset(set(x.lower() for x in _normalize_tags(c.skill_tags or [])))
+            ]
     result = []
     for c in candidates:
         d = _candidate_out(c)
@@ -314,13 +359,16 @@ def resume_preview(candidate_id: int, db: Session = Depends(get_db)):
             for para in doc.paragraphs:
                 text = para.text.strip()
                 if text:
-                    html_parts.append(f"<p>{text}</p>")
+                    html_parts.append(f"<p>{escape(text)}</p>")
             for table in doc.tables:
                 html_parts.append("<table style='border-collapse:collapse;width:100%'>")
                 for row in table.rows:
                     html_parts.append("<tr>")
                     for cell in row.cells:
-                        html_parts.append(f"<td style='border:1px solid #ddd;padding:6px 8px;font-size:13px'>{cell.text}</td>")
+                        html_parts.append(
+                            "<td style='border:1px solid #ddd;padding:6px 8px;font-size:13px'>"
+                            f"{escape(cell.text)}</td>"
+                        )
                     html_parts.append("</tr>")
                 html_parts.append("</table>")
             return {"html": "".join(html_parts)}

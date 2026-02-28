@@ -1,28 +1,46 @@
 <template>
   <div class="talent-page">
     <div class="page-toolbar">
-      <h2 class="page-title">人才库 <span class="count-badge">{{ candidates.length }}</span></h2>
-      <el-input
-        v-model="searchQ"
-        placeholder="搜索姓名/手机/邮箱..."
-        clearable
-        style="width: 220px"
-        @input="debouncedFetch"
-      />
-      <el-select v-model="filterEducation" placeholder="学历" clearable style="width: 110px" @change="fetchCandidates">
-        <el-option label="本科" value="本科" />
-        <el-option label="硕士" value="硕士" />
-        <el-option label="博士" value="博士" />
-        <el-option label="大专" value="大专" />
-      </el-select>
-      <el-select v-model="filterFollowup" placeholder="跟进状态" clearable style="width: 120px" @change="fetchCandidates">
-        <el-option label="待联系" value="pending" />
-        <el-option label="已联系" value="contacted" />
-        <el-option label="感兴趣" value="interested" />
-        <el-option label="暂不考虑" value="not_now" />
-      </el-select>
-      <el-checkbox v-model="filterStarred" label="只看星标" @change="fetchCandidates" />
-      <el-button type="primary" @click="createDialogVisible = true">新建候选人</el-button>
+      <div class="toolbar-row toolbar-row-top">
+        <h2 class="page-title">人才库 <span class="count-badge">{{ candidates.length }}</span></h2>
+        <el-input
+          v-model="searchQ"
+          placeholder="搜索姓名/手机/邮箱..."
+          clearable
+          style="width: 320px"
+          @keyup.enter="executeSearch"
+        />
+        <el-button type="primary" @click="createDialogVisible = true">新建候选人</el-button>
+      </div>
+      <div class="toolbar-row toolbar-row-filters">
+        <el-input
+          v-model="tagQuery"
+          placeholder="标签搜索：ai,python"
+          clearable
+          style="width: 260px"
+          @keyup.enter="executeSearch"
+        />
+        <span class="filter-label">匹配模式</span>
+        <el-select v-model="tagMode" placeholder="匹配模式" style="width: 150px">
+          <el-option label="全部匹配" value="all" />
+          <el-option label="任一匹配" value="any" />
+        </el-select>
+        <el-select v-model="filterEducation" placeholder="学历" clearable style="width: 110px">
+          <el-option label="本科" value="本科" />
+          <el-option label="硕士" value="硕士" />
+          <el-option label="博士" value="博士" />
+          <el-option label="大专" value="大专" />
+        </el-select>
+        <el-select v-model="filterFollowup" placeholder="跟进状态" clearable style="width: 120px">
+          <el-option label="待联系" value="pending" />
+          <el-option label="已联系" value="contacted" />
+          <el-option label="感兴趣" value="interested" />
+          <el-option label="暂不考虑" value="not_now" />
+        </el-select>
+        <el-checkbox v-model="filterStarred" label="只看星标" />
+        <el-button type="primary" @click="executeSearch">搜索</el-button>
+        <el-button @click="resetFilters">重置</el-button>
+      </div>
     </div>
 
     <div v-if="loading" class="loading-wrap">
@@ -93,13 +111,14 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { candidatesApi } from '../api/candidates'
-import { debounce } from '../api/utils'
 import CandidateDetail from '../components/CandidateDetail.vue'
 import CreateCandidateDialog from '../components/CreateCandidateDialog.vue'
 
 const candidates = ref([])
 const loading = ref(false)
 const searchQ = ref('')
+const tagQuery = ref('')
+const tagMode = ref('all')
 const filterEducation = ref('')
 const filterFollowup = ref('')
 const filterStarred = ref(false)
@@ -111,6 +130,8 @@ async function fetchCandidates() {
   try {
     const params = {
       q: searchQ.value || undefined,
+      tags: tagQuery.value || undefined,
+      tag_mode: tagMode.value || undefined,
       education: filterEducation.value || undefined,
       followup_status: filterFollowup.value || undefined,
       starred: filterStarred.value || undefined,
@@ -122,10 +143,22 @@ async function fetchCandidates() {
   }
 }
 
-const debouncedFetch = debounce(fetchCandidates, 250)
-
 function openDetail(c) {
   selectedCandidate.value = c
+}
+
+function executeSearch() {
+  fetchCandidates()
+}
+
+function resetFilters() {
+  searchQ.value = ''
+  tagQuery.value = ''
+  tagMode.value = 'all'
+  filterEducation.value = ''
+  filterFollowup.value = ''
+  filterStarred.value = false
+  fetchCandidates()
 }
 
 onMounted(fetchCandidates)
@@ -136,17 +169,32 @@ onMounted(fetchCandidates)
 
 .page-toolbar {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 10px;
   margin-bottom: 20px;
+}
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
+}
+
+.toolbar-row-top {
+  justify-content: flex-start;
+}
+
+.toolbar-row-filters {
+  justify-content: flex-start;
 }
 
 .page-title {
   font-size: 18px;
   font-weight: 700;
   color: #222;
-  flex: 1;
+  margin: 0;
+  margin-right: auto;
 }
 
 .count-badge {
@@ -155,6 +203,11 @@ onMounted(fetchCandidates)
   font-size: 13px;
   padding: 1px 8px;
   border-radius: 10px;
+}
+
+.filter-label {
+  font-size: 13px;
+  color: #666;
 }
 
 .loading-wrap { padding: 20px 0; }
