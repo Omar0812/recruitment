@@ -9,6 +9,7 @@ RUN apt-get update || \
 # 安装 Node.js 18
 RUN apt-get install -y --no-install-recommends xz-utils curl ca-certificates \
     && ARCH=$(dpkg --print-architecture) \
+    && if [ "$ARCH" = "amd64" ]; then ARCH="x64"; fi \
     && NODE_VER=v18.20.8 \
     && NODE_FILE="node-${NODE_VER}-linux-${ARCH}.tar.xz" \
     && (curl -fsSL "https://nodejs.org/dist/${NODE_VER}/${NODE_FILE}" -o /tmp/node.tar.xz \
