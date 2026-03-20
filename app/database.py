@@ -20,46 +20,70 @@ class Base(DeclarativeBase):
     pass
 
 
-def ensure_legacy_job_columns() -> None:
-    """Backfill missing jobs columns for existing local SQLite databases."""
+def _sqla_type_to_ddl(col_type) -> str:
+    """Map SQLAlchemy column type to SQLite DDL type string."""
+    import sqlalchemy.types as satypes
+
+    type_map = [
+        (satypes.Boolean, "BOOLEAN"),
+        (satypes.Date, "DATE"),
+        (satypes.DateTime, "DATETIME"),
+        (satypes.Float, "FLOAT"),
+        (satypes.Integer, "INTEGER"),
+        (satypes.JSON, "JSON"),
+        (satypes.Text, "TEXT"),
+        (satypes.String, "VARCHAR"),
+    ]
+    for cls, ddl in type_map:
+        if isinstance(col_type, cls):
+            return ddl
+    return "TEXT"
+
+
+def ensure_all_columns() -> None:
+    """Auto-add missing columns for ALL existing tables (old DB + new code)."""
     if engine.dialect.name != "sqlite":
         return
 
     with engine.begin() as conn:
         inspector = inspect(conn)
-        if "jobs" not in inspector.get_table_names():
-            return
+        existing_tables = set(inspector.get_table_names())
 
-        existing_columns = {column["name"] for column in inspector.get_columns("jobs")}
-        statements: list[str] = []
+        for table_name, table in Base.metadata.tables.items():
+            if table_name not in existing_tables:
+                continue  # new table — create_all will handle it
+            existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+            for col in table.columns:
+                if col.name in existing_cols:
+                    continue
+                ddl_type = _sqla_type_to_ddl(col.type)
+                default_clause = ""
+                if ddl_type == "JSON":
+                    default_clause = " DEFAULT '[]'"
+                elif ddl_type == "INTEGER" and col.default is not None:
+                    arg = col.default.arg
+                    if isinstance(arg, int):
+                        default_clause = f" DEFAULT {arg}"
+                elif ddl_type == "BOOLEAN" and col.default is not None:
+                    arg = col.default.arg
+                    if isinstance(arg, bool):
+                        default_clause = f" DEFAULT {int(arg)}"
+                stmt = f"ALTER TABLE {table_name} ADD COLUMN {col.name} {ddl_type}{default_clause}"
+                conn.execute(text(stmt))
 
-        if "location_name" not in existing_columns:
-            statements.append("ALTER TABLE jobs ADD COLUMN location_name VARCHAR")
-        if "location_address" not in existing_columns:
-            statements.append("ALTER TABLE jobs ADD COLUMN location_address VARCHAR")
-        if "notes" not in existing_columns:
-            statements.append("ALTER TABLE jobs ADD COLUMN notes TEXT")
-        if "close_reason" not in existing_columns:
-            statements.append("ALTER TABLE jobs ADD COLUMN close_reason VARCHAR")
-        if "closed_at" not in existing_columns:
-            statements.append("ALTER TABLE jobs ADD COLUMN closed_at DATETIME")
-
-        for statement in statements:
-            conn.execute(text(statement))
-
-        if "city" in existing_columns:
-            conn.execute(text("""
-                UPDATE jobs
-                SET location_name = city
-                WHERE location_name IS NULL AND city IS NOT NULL
-            """))
-
-        if "persona" in existing_columns:
-            conn.execute(text("""
-                UPDATE jobs
-                SET notes = persona
-                WHERE notes IS NULL AND persona IS NOT NULL
-            """))
+        # Legacy data migration: city → location_name, persona → notes
+        if "jobs" in existing_tables:
+            job_cols = {c["name"] for c in inspector.get_columns("jobs")}
+            if "city" in job_cols and "location_name" in job_cols:
+                conn.execute(text("""
+                    UPDATE jobs SET location_name = city
+                    WHERE location_name IS NULL AND city IS NOT NULL
+                """))
+            if "persona" in job_cols and "notes" in job_cols:
+                conn.execute(text("""
+                    UPDATE jobs SET notes = persona
+                    WHERE notes IS NULL AND persona IS NOT NULL
+                """))
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -71,7 +95,7 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def ensure_candidate_attachments_column() -> None:
-    """Add attachments JSON column to candidates and migrate resume_path data."""
+    """Migrate resume_path data into attachments JSON column."""
     if engine.dialect.name != "sqlite":
         return
 
@@ -81,17 +105,17 @@ def ensure_candidate_attachments_column() -> None:
             return
 
         existing_columns = {col["name"] for col in inspector.get_columns("candidates")}
-        if "attachments" in existing_columns:
+        if "attachments" not in existing_columns or "resume_path" not in existing_columns:
             return
 
-        conn.execute(text("ALTER TABLE candidates ADD COLUMN attachments JSON DEFAULT '[]'"))
-
-        # 迁移 resume_path → attachments[0]
+        # 迁移 resume_path → attachments[0]（只迁移 attachments 还是空的行）
         from datetime import datetime, timezone
         import json
 
         rows = conn.execute(text(
-            "SELECT id, resume_path, created_at FROM candidates WHERE resume_path IS NOT NULL AND resume_path != ''"
+            "SELECT id, resume_path, created_at FROM candidates"
+            " WHERE resume_path IS NOT NULL AND resume_path != ''"
+            " AND (attachments IS NULL OR attachments = '[]')"
         )).fetchall()
 
         for row in rows:

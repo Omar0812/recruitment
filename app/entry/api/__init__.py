@@ -75,3 +75,16 @@ def install_error_handlers(app: FastAPI) -> None:
             status_code=422,
             content={"code": "validation_error", "message": message},
         )
+
+    @app.exception_handler(Exception)
+    async def _handle_unhandled_error(_: Request, exc: Exception):
+        import traceback
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "code": "internal_error",
+                "message": str(exc),
+                "traceback": traceback.format_exception(exc),
+            },
+        )

@@ -5,13 +5,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import models  # noqa: F401 — ensure all models are imported
-from app.database import Base, engine, SessionLocal, ensure_legacy_job_columns, ensure_candidate_attachments_column
+from app.database import Base, engine, SessionLocal, ensure_all_columns, ensure_candidate_attachments_column
 from app.entry.api import install_error_handlers, router as api_v1_router
 from app.models.system_setting import SystemSetting
 
 Base.metadata.create_all(bind=engine)
-ensure_legacy_job_columns()
-ensure_candidate_attachments_column()
+ensure_all_columns()
+ensure_candidate_attachments_column()  # kept: has resume_path → attachments data migration
 
 
 def _ensure_system_settings():
