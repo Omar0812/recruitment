@@ -1,0 +1,17 @@
+# 国内用户如遇基础镜像下载慢，请配置 Docker 镜像加速器
+# 参考：https://cr.console.aliyun.com/cn-hangzhou/instances/mirrors
+
+services:
+  recruitment:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./app:/app/app
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      - ./tests:/app/tests
+      - ./frontend/dist:/app/frontend/dist
+    environment:
+      - DOCKER=1

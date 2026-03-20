@@ -4,3 +4,23 @@ __pycache__/
 **/__pycache__/
 *.pyc
 config.json
+node_modules/
+wheels/
+
+# 开发文件（不分发）
+openspec/
+tests/
+alembic/
+alembic.ini
+frontend/src/
+frontend/package.json
+frontend/package-lock.json
+frontend/tsconfig*.json
+frontend/vite.config.ts
+frontend/index.html
+frontend/README.md
+frontend/.vscode/
+CLAUDE.md
+SOUL.md
+V1.*-AUDIT.md
+docs/

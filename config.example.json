@@ -1,10 +1,21 @@
 {
-  "_comment": "复制此文件为 config.json 并填入你的配置",
+  "_comment": "配置文件位于 data/config.json，首次启动自动生成",
   "provider": "openai",
   "_provider_options": ["openai", "anthropic", "gemini", "openai-compatible"],
   "model": "gpt-4o",
   "api_key": "your-api-key-here",
+  "admin_token": "change-this-admin-token",
   "_openai_compatible_extra": {
     "base_url": "https://your-provider.com/v1"
+  },
+  "email": {
+    "smtp_host": "smtp.feishu.cn",
+    "smtp_port": 465,
+    "smtp_user": "hr@yourcompany.com",
+    "smtp_password": "your-email-password",
+    "from_name": "招聘团队",
+    "use_ssl": true,
+    "interview_invite_template": "尊敬的 {{candidate_name}}，\n\n感谢您对【{{job_title}}】职位的关注！\n\n我们诚挚地邀请您参加面试，具体安排如下：\n\n时间：{{date}} {{time}}\n地点：{{location}}\n面试官：{{interviewer}}\n\n期待与您见面，如有任何问题欢迎随时联系我们。\n\n{{company_name}} 招聘团队",
+    "rejection_template": "尊敬的 {{candidate_name}}，\n\n感谢您对【{{job_title}}】职位的关注和投入。\n\n经过慎重评估，我们遗憾地通知您，本次未能与您进一步推进流程。这并不意味着对您能力的否定，希望您在求职过程中一切顺利。\n\n如未来有合适的机会，我们将主动与您联系。\n\n祝好，\n招聘团队"
   }
 }
