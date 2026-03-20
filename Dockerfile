@@ -6,13 +6,13 @@ WORKDIR /app
 RUN apt-get update || \
     (sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources && apt-get update)
 
-# 安装 Node.js 18（用 Python 下载二进制，避免 curl 依赖）
-RUN ARCH=$(dpkg --print-architecture) \
+# 安装 Node.js 18
+RUN apt-get install -y --no-install-recommends xz-utils curl ca-certificates \
+    && ARCH=$(dpkg --print-architecture) \
     && NODE_VER=v18.20.8 \
     && NODE_FILE="node-${NODE_VER}-linux-${ARCH}.tar.xz" \
-    && (python3 -c "import urllib.request; urllib.request.urlretrieve('https://nodejs.org/dist/${NODE_VER}/${NODE_FILE}', '/tmp/node.tar.xz')" \
-        || python3 -c "import urllib.request; urllib.request.urlretrieve('https://npmmirror.com/mirrors/node/${NODE_VER}/${NODE_FILE}', '/tmp/node.tar.xz')") \
-    && apt-get install -y --no-install-recommends xz-utils \
+    && (curl -fsSL "https://nodejs.org/dist/${NODE_VER}/${NODE_FILE}" -o /tmp/node.tar.xz \
+        || curl -fsSL "https://npmmirror.com/mirrors/node/${NODE_VER}/${NODE_FILE}" -o /tmp/node.tar.xz) \
     && tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 \
     && rm /tmp/node.tar.xz \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
