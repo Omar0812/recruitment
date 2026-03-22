@@ -19,7 +19,6 @@
           <th>姓名</th>
           <th>岗位</th>
           <th>入职日期</th>
-          <th>薪资</th>
           <th>年总包</th>
         </tr>
       </thead>
@@ -32,9 +31,8 @@
         >
           <td class="name-cell">{{ item.candidate_name || '-' }}</td>
           <td>{{ item.job_title || '-' }}</td>
-          <td>{{ formatOnboardDate(item.onboard_date) }}</td>
-          <td>{{ formatSalary(item.monthly_salary, item.salary_months) }}</td>
-          <td>{{ formatTotalCash(item.total_cash) }}</td>
+          <td>{{ formatHireDate(item.hire_date) }}</td>
+          <td>{{ formatTotalCash(item.total_cash, item.monthly_salary, item.salary_months) }}</td>
         </tr>
       </tbody>
     </table>
@@ -56,23 +54,17 @@ function openCandidate(candidateId: number) {
   openCandidatePanel(candidateId)
 }
 
-function formatOnboardDate(dateStr: string | null) {
+function formatHireDate(dateStr: string | null) {
   if (!dateStr) return '-'
   const s = formatDate(dateStr)
   return s ? `${s} 入职` : '-'
 }
 
-function formatSalary(monthly: number | null, months: number | null) {
-  if (monthly == null) return '-'
-  const k = Math.round(monthly / 1000)
-  if (months == null) return `${k}k`
-  return `${k}k×${months}`
-}
-
-function formatTotalCash(total: number | null) {
-  if (total == null) return '-'
-  const k = Math.round(total / 1000)
-  return `总包${k}k`
+function formatTotalCash(total: number | null, monthly: number | null, months: number | null) {
+  if (total != null) return `¥${total.toLocaleString()}`
+  if (monthly != null && months != null) return `¥${(monthly * months).toLocaleString()}`
+  if (monthly != null) return `¥${monthly.toLocaleString()}/月`
+  return '-'
 }
 
 onMounted(() => {

@@ -8,6 +8,9 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import text
+
+from app.utils.time import to_utc_z, utc_now
 
 from app.database import get_db
 from app.engine.audit import log_audit
@@ -148,11 +151,21 @@ def list_candidates(
         blacklist=blacklist,
     )
 
+    # 批量查 User 表翻译 created_by → created_by_name
+    raw_items = result["items"]
+    creator_ids = {row["candidate"].created_by for row in raw_items if row["candidate"].created_by is not None}
+    creator_map: dict[int, str] = {}
+    if creator_ids:
+        creators = db.query(User).filter(User.id.in_(creator_ids)).all()
+        creator_map = {u.id: u.display_name for u in creators}
+
     items = []
-    for row in result["items"]:
+    for row in raw_items:
         c = row["candidate"]
         la = row["latest_application"]
         item = CandidateWithApplication.model_validate(c)
+        if c.created_by is not None:
+            item.created_by_name = creator_map.get(c.created_by)
         if la:
             item.latest_application = LatestApplication(**la)
         items.append(item)
@@ -163,6 +176,23 @@ def list_candidates(
         page=result["page"],
         page_size=result["page_size"],
     )
+
+
+@router.get("/skill-options")
+def skill_options(
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """返回所有未删除、未合并候选人的去重技能标签，按字符串排序。"""
+    sql = text(
+        "SELECT DISTINCT value FROM candidates, json_each(candidates.skill_tags) "
+        "WHERE candidates.deleted_at IS NULL "
+        "AND candidates.merged_into IS NULL "
+        "AND value != '' "
+        "ORDER BY value"
+    )
+    rows = db.execute(sql).fetchall()
+    return [row[0] for row in rows]
 
 
 @router.get("/{candidate_id}", response_model=CandidateRead)
@@ -187,7 +217,7 @@ async def create_candidate(body: CandidateCreate, user: User = Depends(current_u
             "file_path": candidate.resume_path,
             "label": "简历",
             "type": "resume",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": to_utc_z(utc_now()),
         }]
     db.add(candidate)
     db.flush()
@@ -260,22 +290,23 @@ async def check_duplicate(
     email = body.email if body and body.email is not None else email
 
     matches = []
+    base_filter = [Candidate.deleted_at.is_(None), Candidate.merged_into.is_(None)]
     if phone:
         matches.extend(
             db.query(Candidate)
-            .filter(Candidate.phone == phone, Candidate.deleted_at.is_(None))
+            .filter(Candidate.phone == phone, *base_filter)
             .all()
         )
     if email:
         matches.extend(
             db.query(Candidate)
-            .filter(Candidate.email == email, Candidate.deleted_at.is_(None))
+            .filter(Candidate.email == email, *base_filter)
             .all()
         )
     if name and not matches:
         matches.extend(
             db.query(Candidate)
-            .filter(Candidate.name == name, Candidate.deleted_at.is_(None))
+            .filter(Candidate.name == name, *base_filter)
             .all()
         )
     seen = set()
@@ -360,7 +391,7 @@ async def add_attachment(
         "file_path": body.file_path,
         "label": body.label or "附件",
         "type": body.type or "attachment",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": to_utc_z(utc_now()),
     })
     candidate.attachments = attachments
     log_audit(

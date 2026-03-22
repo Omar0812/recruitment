@@ -71,7 +71,18 @@
                 v-if="showDuplicateResult"
                 :results="duplicateResults"
                 @ignore="handleIgnoreDuplicate"
+                @merge="handleMergeDuplicate"
                 @close="showDuplicateResult = false"
+              />
+
+              <!-- Merge Confirm -->
+              <MergeConfirm
+                v-if="showMergeConfirm && currentCandidateSummary && mergeOtherSummary"
+                :current="currentCandidateSummary"
+                :other="mergeOtherSummary"
+                :merging="merging"
+                @confirm="handleMergeConfirm"
+                @cancel="handleMergeCancel"
               />
 
               <!-- Join Pipeline Inline -->
@@ -120,7 +131,7 @@ import { useRouter } from 'vue-router'
 import { useCandidatePanel } from '@/composables/useCandidatePanel'
 import { useJobPanel } from '@/composables/useJobPanel'
 import { executeAction, fetchEvents } from '@/api/pipeline'
-import { checkDuplicate } from '@/api/candidates'
+import { checkDuplicate, fetchCandidate, fetchCandidateApplications } from '@/api/candidates'
 import { fetchSupplier } from '@/api/channels'
 import { formatDate } from '@/utils/date'
 import type { Application, CandidateDetail, CandidateDuplicatePanelItem, Supplier } from '@/api/types'
@@ -130,6 +141,7 @@ import ResumeTab from './ResumeTab.vue'
 import ApplicationHistoryTab from './ApplicationHistoryTab.vue'
 import BlacklistConfirm from './BlacklistConfirm.vue'
 import DuplicateResult from './DuplicateResult.vue'
+import MergeConfirm from './MergeConfirm.vue'
 import JoinPipelineInline from './JoinPipelineInline.vue'
 
 const { state, close, refresh } = useCandidatePanel()
@@ -146,6 +158,9 @@ const joiningPipeline = ref(false)
 const joinPipelineError = ref<string | null>(null)
 const unblacklisting = ref(false)
 const editing = ref(false)
+const showMergeConfirm = ref(false)
+const mergeTargetDup = ref<CandidateDuplicatePanelItem | null>(null)
+const merging = ref(false)
 
 // 按需加载候选人关联的猎头
 const candidateSupplier = ref<Supplier | null>(null)
@@ -231,16 +246,117 @@ async function handleCheckDuplicate() {
       last_company: match.last_company,
       last_title: match.last_title,
       match_reasons: formatMatchReasons(match.match_reasons),
+      is_blacklisted: match.is_blacklisted,
+      active_link: match.active_link,
+      source: null,
+      attachments_count: 0,
+      applications_count: 0,
       last_application: match.last_application ? {
         job_title: match.last_application.job_title,
         outcome: match.last_application.outcome,
       } : null,
     }))
   showDuplicateResult.value = true
+  showMergeConfirm.value = false
+  mergeTargetDup.value = null
 }
 
 function handleIgnoreDuplicate(candidateId: number) {
   duplicateResults.value = duplicateResults.value.filter((candidate) => candidate.id !== candidateId)
+}
+
+async function handleMergeDuplicate(candidateId: number) {
+  if (!state.candidate) return
+
+  // 找到目标 dup 信息
+  const dup = duplicateResults.value.find((d) => d.id === candidateId)
+  if (!dup) return
+
+  // 加载对方完整信息以获取 source, attachments, applications
+  try {
+    const [otherDetail, otherApps] = await Promise.all([
+      fetchCandidate(candidateId),
+      fetchCandidateApplications(candidateId),
+    ])
+    dup.source = otherDetail.source
+    dup.attachments_count = (otherDetail.attachments ?? []).length
+    dup.applications_count = otherApps.items.length
+    dup.is_blacklisted = otherDetail.blacklisted
+
+    mergeTargetDup.value = dup
+    showDuplicateResult.value = false
+    showMergeConfirm.value = true
+  } catch (e: any) {
+    alert(e.message || '加载候选人信息失败')
+  }
+}
+
+const currentCandidateSummary = computed(() => {
+  if (!state.candidate) return null
+  return {
+    id: state.candidate.id,
+    name: state.candidate.name,
+    source: state.candidate.source,
+    phone: state.candidate.phone,
+    email: state.candidate.email,
+    attachments_count: (state.candidate.attachments ?? []).length,
+    applications_count: state.applications.length,
+    is_blacklisted: state.candidate.blacklisted,
+    active_link: state.applications.find(a => a.state === 'IN_PROGRESS')
+      ? { application_id: 0, job_id: 0, job_title: '', stage: '' }
+      : null,
+  }
+})
+
+const mergeOtherSummary = computed(() => {
+  const dup = mergeTargetDup.value
+  if (!dup) return null
+  return {
+    id: dup.id,
+    name: dup.name,
+    source: dup.source,
+    phone: dup.phone,
+    email: dup.email,
+    attachments_count: dup.attachments_count,
+    applications_count: dup.applications_count,
+    is_blacklisted: dup.is_blacklisted,
+    active_link: dup.active_link,
+  }
+})
+
+async function handleMergeConfirm(targetId: number, sourceId: number) {
+  if (merging.value) return
+  merging.value = true
+  try {
+    await executeAction({
+      command_id: crypto.randomUUID(),
+      action_code: 'merge_candidate',
+      target: { type: 'candidate', id: targetId },
+      payload: { source_candidate_id: sourceId },
+      actor: { type: 'human' },
+    })
+    showMergeConfirm.value = false
+    mergeTargetDup.value = null
+
+    // 如果用户选择对方为主档案，切换面板到对方
+    if (state.candidate && targetId !== state.candidate.id) {
+      const { open } = useCandidatePanel()
+      close()
+      open(targetId)
+    } else {
+      await refresh({ markMutation: true })
+    }
+  } catch (e: any) {
+    alert(e.message || '合并失败')
+  } finally {
+    merging.value = false
+  }
+}
+
+function handleMergeCancel() {
+  showMergeConfirm.value = false
+  mergeTargetDup.value = null
+  showDuplicateResult.value = true
 }
 
 function handleBackToJob() {
@@ -260,7 +376,9 @@ async function handleRecordLeft() {
       const events = await fetchEvents(latestHiredApplication.value.id)
       const hireEvent = events.find(e => e.type === 'hire_confirmed')
       if (hireEvent) {
-        const hireDate = new Date(hireEvent.occurred_at)
+        // 从 payload.hire_date 取入职日期（fallback 到 occurred_at）
+        const hireDateStr = hireEvent.payload?.hire_date || hireEvent.occurred_at
+        const hireDate = new Date(hireDateStr)
         const guaranteeEnd = new Date(hireDate)
         guaranteeEnd.setMonth(guaranteeEnd.getMonth() + supplier.guarantee_months!)
         if (new Date() < guaranteeEnd) {

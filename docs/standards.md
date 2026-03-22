@@ -175,7 +175,9 @@
 - 统一使用 `utc_now()`（`app/utils/time.py`）获取当前时间，返回 **aware** UTC datetime（`datetime.now(timezone.utc)`）
 - 禁止直接调用 `datetime.utcnow()`（已 deprecated）或 `datetime.now()`
 - 模型默认值和 onupdate 统一用 `utc_now`
-- 序列化用 `serialize_timestamp_fields()` 递归转 ISO8601 `Z` 格式
+- 序列化统一在 Pydantic schema 基类 `AppBaseModel`（`app/schemas/base.py`）：`@field_serializer('*')` 将所有 datetime 字段序列化为 ISO8601 `Z` 后缀格式（naive datetime 自动视为 UTC）
+- 所有含 datetime 字段的 Read schema 必须继承 `AppBaseModel`（已包含 `from_attributes=True`）
+- JSON 内嵌的手动时间戳（如附件 `created_at`）使用 `to_utc_z(utc_now())`，禁止裸 `datetime.now(timezone.utc).isoformat()`
 - 业务日期判断（如简报的"今天/明天"）使用 `BIZ_TZ`（UTC+8）
 
 **时间处理（前端）**
@@ -215,6 +217,7 @@
 
 - `BusinessError(code, message)` — code 机器读，message 人读
 - entry 层统一捕获 → HTTP 422 + `{code, message}`
+- 未捕获异常 → HTTP 500 + `{code, message, traceback}`（catch-all handler，便于远程排查）
 
 ### 3. API 约定
 
@@ -233,11 +236,12 @@
 - 无头组件优先
 - HTTP 客户端使用 fetch 封装
 - 状态管理使用 Pinia
+- **LAN 兼容**：不使用仅限安全上下文的 Web API（如 `crypto.randomUUID`），`main.ts` 入口已加 polyfill，确保通过 HTTP + 局域网 IP 访问时功能正常
 
 ### 5. 数据层约定
 
 - 核心业务实体不硬删除，以状态流转表达生命周期
-- Alembic 为唯一 schema 变更入口
+- **Schema 变更**：开发阶段用 `ensure_all_columns()` 启动时自动补列（对比模型与数据库，ALTER TABLE 加缺失列）；生产阶段用 Alembic 迁移
 - JSON 字段仅用于可扩展 payload，不承载关系主键
 - 避免 SQLite 专有语法（PRAGMA / AUTOINCREMENT）
 

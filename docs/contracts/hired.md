@@ -14,9 +14,9 @@
 ```
 application_id, candidate_id, candidate_name,
 job_id, job_title,
-onboard_date,            ← 从最新 OFFER_RECORDED event payload 读取
-monthly_salary,          ← payload.cash_monthly 或 payload.monthly_salary
-salary_months,           ← payload.months 或 payload.salary_months
+hire_date,               ← 从 HIRE_CONFIRMED event payload.hire_date 读取（全系统入职日期唯一来源）
+monthly_salary,          ← 从 OFFER_RECORDED payload.monthly_salary 读取
+salary_months,           ← payload.salary_months
 total_cash,              ← payload.total_cash，缺失时自动计算 monthly × months
 source, supplier_id
 ```
@@ -28,7 +28,7 @@ source, supplier_id
 - 表格布局，列：姓名 · 岗位 · 入职日期 · 薪资 · 年总包
 - 薪资格式：`Nk×M`（如 `33k×13`）
 - 年总包格式：`总包Nk`（如 `总包429k`）
-- 入职日期格式：`YYYY-MM-DD 入职`（调用 `utils/date.ts` 的 `formatDate`）
+- 入职日期格式：`YYYY-MM-DD 入职`（调用 `utils/date.ts` 的 `formatDate`），数据来源为 `hire_confirmed` 事件 payload.hire_date
 - 空列表显示「暂无已入职人员」
 - 底部显示总人数
 - 点击行 → 打开候选人详情面板
@@ -36,8 +36,8 @@ source, supplier_id
 ## 业务规则
 
 - **数据来源**：仅展示 `Application.state = HIRED` 的记录
-- **排序**：入职日期倒序（最新在前）；无入职日期的排末尾；同日期按 application_id 倒序
-- **薪资读取优先级**：取最新 OFFER_RECORDED Event 的 payload，字段名兼容两种写法（cash_monthly/monthly_salary, months/salary_months）
+- **排序**：入职日期倒序（最新在前）；无入职日期的排末尾；同日期按 application_id 倒序。入职日期来源为 `hire_confirmed` 事件 payload.hire_date
+- **薪资读取优先级**：取最新 OFFER_RECORDED Event 的 payload（`monthly_salary`/`salary_months`）
 - **total_cash 自动计算**：若 payload 无 total_cash 但有 monthly_salary 和 salary_months，自动相乘
 - **无编辑能力**：此页面纯只读，不能修改薪资或入职日期（须回溯到进行中模块的 Event 修改）
 

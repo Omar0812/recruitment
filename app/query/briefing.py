@@ -292,6 +292,15 @@ def _build_focus(db: Session, active_apps, todo_app_ids: set[int], today: date):
     # ── 岗位级信号 ──
     open_jobs = db.query(Job).filter(Job.status == "open").all()
 
+    # 一次 GROUP BY 查询所有岗位的 hired count，替代循环内逐个查询
+    hired_rows = (
+        db.query(Application.job_id, func.count(Application.id))
+        .filter(Application.state == ApplicationState.HIRED.value)
+        .group_by(Application.job_id)
+        .all()
+    )
+    hired_map: dict[int, int] = {job_id: cnt for job_id, cnt in hired_rows}
+
     for job in open_jobs:
         signals: list[str] = []
         severity = 99
@@ -299,12 +308,7 @@ def _build_focus(db: Session, active_apps, todo_app_ids: set[int], today: date):
         # 该岗位的活跃 Application
         job_apps = [a for a in active_apps if a.job_id == job.id]
         active_count = len(job_apps)
-        hired_count = (
-            db.query(func.count(Application.id))
-            .filter(Application.job_id == job.id,
-                    Application.state == ApplicationState.HIRED.value)
-            .scalar()
-        )
+        hired_count = hired_map.get(job.id, 0)
 
         job_age = _days_since(job.created_at.date(), today) if job.created_at else 0
         front_stages = {"简历筛选", "面试"}

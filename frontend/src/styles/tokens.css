@@ -1,0 +1,55 @@
+:root {
+  /* 色彩 — 地无色，山有色 */
+  --color-bg: #FAFAF9;
+  --color-text-primary: #1A1A18;
+  --color-text-secondary: rgba(26, 26, 24, 0.60);
+  --color-text-tertiary: rgba(26, 26, 24, 0.40);
+  --color-line: rgba(26, 26, 24, 0.12);
+  --color-urgent: #C4472A;
+
+  /* 材质色（低饱和） */
+  --color-material-moss: #6F7A69;
+  --color-material-stone: #6E7682;
+  --color-material-clay: #9A7E66;
+
+  /* 主色 */
+  --color-primary: #6F7A69;
+
+  /* 危险色 */
+  --color-danger: #C4472A;
+
+  /* 背景层级 */
+  --color-bg-secondary: #F0EFED;
+  --color-bg-hover: rgba(26, 26, 24, 0.04);
+  --color-bg-active: rgba(26, 26, 24, 0.08);
+
+  /* 边框 */
+  --color-border: rgba(26, 26, 24, 0.12);
+
+  /* 反馈色 */
+  --success-bg: rgba(111, 122, 105, 0.10);
+  --success-color: #4A6741;
+  --error-bg: rgba(196, 71, 42, 0.10);
+  --error-color: #C4472A;
+  --warning-bg: rgba(154, 126, 102, 0.10);
+  --warning-color: #8B6914;
+  --info-bg: rgba(110, 118, 130, 0.10);
+  --info-color: #4A5568;
+
+  /* 字体 */
+  --font-sans: 'Inter', 'PingFang SC', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* 间距（4px 基础网格） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* 导航 */
+  --nav-width: 200px;
+}

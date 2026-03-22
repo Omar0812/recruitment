@@ -1,5 +1,6 @@
 .venv/
 data/
+data/.encrypt_key
 __pycache__/
 **/__pycache__/
 *.pyc
@@ -9,10 +10,8 @@ wheels/
 
 # 开发文件（不分发）
 openspec/
-tests/
 alembic/
 alembic.ini
-frontend/src/
 frontend/package.json
 frontend/package-lock.json
 frontend/tsconfig*.json
@@ -24,3 +23,6 @@ CLAUDE.md
 SOUL.md
 V1.*-AUDIT.md
 docs/
+
+# 备份文件
+backup/

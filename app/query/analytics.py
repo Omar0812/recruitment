@@ -107,31 +107,63 @@ def _latest_offer_payloads(db: Session, application_ids: set[int]) -> dict[int, 
     return latest_payloads
 
 
+def _extract_hire_date(
+    hire_event: Event,
+    offer_payloads: dict[int, dict[str, Any]] | None = None,
+) -> date | None:
+    """从 hire_confirmed 事件提取 hire_date，支持 fallback 链：
+    payload.hire_date → offer.onboard_date → hire_confirmed.occurred_at"""
+    payload = hire_event.payload or {}
+    hd_str = payload.get("hire_date")
+    if hd_str:
+        d = _parse_date(str(hd_str)[:10])
+        if d:
+            return d
+    # fallback: offer.onboard_date
+    if offer_payloads:
+        offer_payload = offer_payloads.get(hire_event.application_id, {})
+        od_str = offer_payload.get("onboard_date")
+        if od_str:
+            d = _parse_date(str(od_str)[:10])
+            if d:
+                return d
+    # fallback: hire_confirmed.occurred_at
+    if hire_event.occurred_at:
+        occurred = hire_event.occurred_at
+        if isinstance(occurred, datetime):
+            return occurred.date()
+    return None
+
+
 def _headhunter_fees_by_hire_date(
     db: Session,
     start: datetime,
     end: datetime,
 ) -> dict[int, float]:
-    hire_events = (
+    """按 hire_date 归属的猎头费。"""
+    all_hire_events = (
         db.query(Event)
-        .filter(
-            Event.type == EventType.HIRE_CONFIRMED.value,
-            Event.occurred_at >= start,
-            Event.occurred_at <= end,
-        )
+        .filter(Event.type == EventType.HIRE_CONFIRMED.value)
         .options(joinedload(Event.application).joinedload(Application.candidate))
         .all()
     )
 
-    hired_supplier_app_ids = {
-        event.application_id
-        for event in hire_events
-        if event.application and event.application.candidate and event.application.candidate.supplier_id
-    }
-    latest_offer_payloads = _latest_offer_payloads(db, hired_supplier_app_ids)
+    all_app_ids = {ev.application_id for ev in all_hire_events}
+    offer_payloads = _latest_offer_payloads(db, all_app_ids)
+
+    start_date = start.date() if isinstance(start, datetime) else start
+    end_date = end.date() if isinstance(end, datetime) else end
+
+    hired_supplier_app_ids: set[int] = set()
+    for ev in all_hire_events:
+        hd = _extract_hire_date(ev, offer_payloads)
+        if hd and start_date <= hd <= end_date:
+            if ev.application and ev.application.candidate and ev.application.candidate.supplier_id:
+                hired_supplier_app_ids.add(ev.application_id)
+
     return {
-        application_id: float((latest_offer_payloads.get(application_id) or {}).get("headhunter_fee", 0) or 0)
-        for application_id in hired_supplier_app_ids
+        app_id: float((offer_payloads.get(app_id) or {}).get("headhunter_fee", 0) or 0)
+        for app_id in hired_supplier_app_ids
     }
 
 
@@ -290,17 +322,6 @@ def get_overview(
             .scalar() or 0
         )
 
-        # 入职（hire_confirmed event 在焦点范围内）
-        hired = (
-            db.query(func.count(func.distinct(Event.application_id)))
-            .filter(
-                Event.type == EventType.HIRE_CONFIRMED.value,
-                Event.occurred_at >= s,
-                Event.occurred_at <= e,
-            )
-            .scalar() or 0
-        )
-
         # 结束（application_ended event 在焦点范围内）
         ended = (
             db.query(func.count(func.distinct(Event.application_id)))
@@ -312,26 +333,42 @@ def get_overview(
             .scalar() or 0
         )
 
-        # 平均周期（本期入职者从 Application 创建到 hire_confirmed 的天数）
-        hire_events = (
+        # 入职：按 hire_date 判断是否在范围内
+        all_hire_events = (
             db.query(Event)
-            .filter(
-                Event.type == EventType.HIRE_CONFIRMED.value,
-                Event.occurred_at >= s,
-                Event.occurred_at <= e,
-            )
+            .filter(Event.type == EventType.HIRE_CONFIRMED.value)
             .options(joinedload(Event.application))
             .all()
         )
+        hire_app_ids = {ev.application_id for ev in all_hire_events}
+        offer_payloads_for_hire = _latest_offer_payloads(db, hire_app_ids)
+
+        s_date = s.date() if isinstance(s, datetime) else s
+        e_date = e.date() if isinstance(e, datetime) else e
+
+        hire_events_in_range: list[tuple[Event, date]] = []
+        seen_app_ids: set[int] = set()
+        for ev in all_hire_events:
+            hd = _extract_hire_date(ev, offer_payloads_for_hire)
+            if hd and s_date <= hd <= e_date and ev.application_id not in seen_app_ids:
+                hire_events_in_range.append((ev, hd))
+                seen_app_ids.add(ev.application_id)
+
+        hired = len(hire_events_in_range)
+
+        # 平均周期：hire_date - application.created_at
         cycle_days_list = []
-        for ev in hire_events:
+        for ev, hd in hire_events_in_range:
             app = ev.application
             if app and app.created_at:
-                delta = (ev.occurred_at - app.created_at).days
+                created_d = app.created_at.date() if isinstance(app.created_at, datetime) else app.created_at
+                delta = (hd - created_d).days
+                if delta < 0:
+                    continue
                 cycle_days_list.append(delta)
         avg_cycle = round(sum(cycle_days_list) / len(cycle_days_list), 1) if cycle_days_list else None
 
-        # 总费用（Expense.occurred_at 在焦点范围 + 猎头费按 hire_confirmed 归属）
+        # 总费用（Expense.occurred_at 在焦点范围 + 猎头费按 hire_date 归属）
         expense_total = (
             db.query(func.coalesce(func.sum(Expense.amount), 0.0))
             .filter(
@@ -380,15 +417,15 @@ def get_overview(
         )
         .all()
     )
-    trend_hired = (
-        db.query(Event.occurred_at)
-        .filter(
-            Event.type == EventType.HIRE_CONFIRMED.value,
-            Event.occurred_at >= dt_start,
-            Event.occurred_at <= dt_end,
-        )
+
+    # 入职趋势：按 hire_date 归桶
+    all_hire_events_trend = (
+        db.query(Event)
+        .filter(Event.type == EventType.HIRE_CONFIRMED.value)
         .all()
     )
+    all_hire_app_ids_trend = {ev.application_id for ev in all_hire_events_trend}
+    offer_payloads_trend = _latest_offer_payloads(db, all_hire_app_ids_trend)
 
     buckets: dict[str, dict] = {}
     for (created_at,) in trend_apps:
@@ -397,10 +434,10 @@ def get_overview(
             b = _bucket_date(d, granularity)
             buckets.setdefault(b, {"period_start": b, "bucket": b, "new_applications": 0, "hired": 0})
             buckets[b]["new_applications"] += 1
-    for (occurred_at,) in trend_hired:
-        if occurred_at:
-            d = occurred_at.date() if isinstance(occurred_at, datetime) else occurred_at
-            b = _bucket_date(d, granularity)
+    for ev in all_hire_events_trend:
+        hd = _extract_hire_date(ev, offer_payloads_trend)
+        if hd and start <= hd <= end:
+            b = _bucket_date(hd, granularity)
             buckets.setdefault(b, {"period_start": b, "bucket": b, "new_applications": 0, "hired": 0})
             buckets[b]["hired"] += 1
 
@@ -527,21 +564,21 @@ def get_jobs_list(
 
     hired_counts = _hired_counts_by_job(db, [job.id for job in jobs])
 
-    # 入职事件（算平均周期）
-    hire_events = (
+    # 入职事件（算平均周期，按 hire_date 筛选）
+    all_hire_events_jobs = (
         db.query(Event)
-        .filter(
-            Event.type == EventType.HIRE_CONFIRMED.value,
-            Event.occurred_at >= dt_start,
-            Event.occurred_at <= dt_end,
-        )
+        .filter(Event.type == EventType.HIRE_CONFIRMED.value)
         .options(joinedload(Event.application))
         .all()
     )
-    hires_by_job: dict[int, list[Event]] = {}
-    for ev in hire_events:
-        if ev.application:
-            hires_by_job.setdefault(ev.application.job_id, []).append(ev)
+    job_hire_app_ids = {ev.application_id for ev in all_hire_events_jobs}
+    offer_payloads_jobs = _latest_offer_payloads(db, job_hire_app_ids)
+
+    hires_by_job: dict[int, list[tuple[Event, date]]] = {}
+    for ev in all_hire_events_jobs:
+        hd = _extract_hire_date(ev, offer_payloads_jobs)
+        if hd and start <= hd <= end and ev.application:
+            hires_by_job.setdefault(ev.application.job_id, []).append((ev, hd))
 
     # 构建 per-job 数据
     items = []
@@ -567,12 +604,16 @@ def get_jobs_list(
         cohort_hired_count = stage_counts["已入职"]
         pass_rate = round(cohort_hired_count / job_count * 100, 1) if job_count > 0 else None
 
-        # 平均周期
+        # 平均周期（hire_date - created_at）
         job_hires = hires_by_job.get(job.id, [])
         cycle_list = []
-        for ev in job_hires:
+        for ev, hd in job_hires:
             if ev.application and ev.application.created_at:
-                cycle_list.append((ev.occurred_at - ev.application.created_at).days)
+                created_d = ev.application.created_at.date() if isinstance(ev.application.created_at, datetime) else ev.application.created_at
+                delta = (hd - created_d).days
+                if delta < 0:
+                    continue
+                cycle_list.append(delta)
         avg_cycle_days = round(sum(cycle_list) / len(cycle_list), 1) if cycle_list else None
         hired_count = hired_counts.get(job.id, 0)
 
@@ -1089,10 +1130,22 @@ def _get_channel_expenses(
                 if app.candidate and app.candidate.supplier_id == sid:
                     headhunter_fee += headhunter_fees.get(app.id, 0.0)
 
+    # 逐条明细（按 occurred_at 降序）
+    items = sorted(channel_expenses, key=lambda e: e.occurred_at, reverse=True)
+    items = [
+        {
+            "month": e.occurred_at.strftime("%Y-%m"),
+            "amount": round(e.amount, 2),
+            "description": e.description,
+        }
+        for e in items
+    ]
+
     return {
         "platform_cost": round(platform_cost, 2),
         "headhunter_fee": round(headhunter_fee, 2),
         "total": round(platform_cost + headhunter_fee, 2),
+        "items": items,
     }
 
 

@@ -33,8 +33,14 @@ COPY frontend/dist/ frontend/dist/
 COPY main.py .
 COPY config.example.json config.example.json
 
-# 确保 data 目录存在
-RUN mkdir -p data
+# 创建非特权用户
+RUN adduser --disabled-password --no-create-home appuser
+
+# 确保 data 目录存在且 appuser 有写权限
+RUN mkdir -p data && chown appuser:appuser data
+
+# 切换到非特权用户
+USER appuser
 
 EXPOSE 8000
 

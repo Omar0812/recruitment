@@ -19,16 +19,6 @@ STAGE_MAP: dict[str, str] = {
     EventType.HIRE_CONFIRMED.value: "已入职",
 }
 
-# 所有合法 Stage 名称（有序）
-STAGE_ORDER: list[str] = [
-    "简历筛选",
-    "面试",
-    "Offer沟通",
-    "背调",
-    "待入职",
-    "已入职",
-]
-
 
 def derive(application) -> str | None:
     """从 Event 链逆序扫描，返回当前 Stage。

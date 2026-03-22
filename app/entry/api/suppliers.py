@@ -192,7 +192,18 @@ def supplier_headhunter_fees(supplier_id: int, user: User = Depends(current_user
         )
         .all()
     )
-    hire_date_map = {e.application_id: e.occurred_at.isoformat()[:10] for e in hire_events}
+    # hire_date fallback 链：payload.hire_date → offer.onboard_date → occurred_at
+    offer_payload_map = {e.application_id: (e.payload or {}) for e in offer_events}
+    hire_date_map: dict[int, str] = {}
+    for e in hire_events:
+        hire_payload = e.payload or {}
+        hd = hire_payload.get("hire_date")
+        if not hd:
+            offer_p = offer_payload_map.get(e.application_id, {})
+            hd = offer_p.get("onboard_date")
+        if not hd:
+            hd = e.occurred_at.isoformat()[:10]
+        hire_date_map[e.application_id] = str(hd)[:10]
 
     result = []
     for event in offer_events:

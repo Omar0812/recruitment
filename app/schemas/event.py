@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
+
+from app.schemas.base import AppBaseModel
 
 
 class EventBase(BaseModel):
@@ -13,18 +15,13 @@ class EventBase(BaseModel):
     body: Optional[str] = None
 
 
-class EventCreate(EventBase):
-    pass
-
-
 class EventUpdate(BaseModel):
     payload: Optional[Dict[str, Any]] = None
     body: Optional[str] = None
     version: Optional[int] = None
 
 
-class EventRead(EventBase):
-    model_config = ConfigDict(from_attributes=True)
+class EventRead(EventBase, AppBaseModel):
 
     id: int
     version: int = 1

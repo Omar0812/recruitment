@@ -11,7 +11,8 @@ from app.entry.deps import current_user
 from app.models.application import Application
 from app.models.enums import ApplicationState
 from app.models.user import User
-from app.schemas.application import ApplicationRead
+from app.query.pipeline import get_event_summaries
+from app.schemas.application import ApplicationRead, EventSummaryItem
 from app.schemas.pagination import PaginatedResponse
 
 router = APIRouter(tags=["applications"])
@@ -23,6 +24,7 @@ def _serialize_application(application: Application) -> ApplicationRead:
         candidate_id=application.candidate_id,
         candidate_name=application.candidate.name if application.candidate else None,
         job_id=application.job_id,
+        job_title=application.job.title if application.job else None,
         state=application.state,
         outcome=application.outcome,
         stage=application.stage,
@@ -41,7 +43,7 @@ def list_applications(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Application).options(joinedload(Application.candidate))
+    q = db.query(Application).options(joinedload(Application.candidate), joinedload(Application.job))
     if state:
         q = q.filter(Application.state == state)
     if candidate_id:
@@ -62,7 +64,7 @@ def list_applications(
 def get_application(application_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
     a = (
         db.query(Application)
-        .options(joinedload(Application.candidate))
+        .options(joinedload(Application.candidate), joinedload(Application.job))
         .filter(Application.id == application_id)
         .one_or_none()
     )
@@ -80,7 +82,7 @@ def pipeline_active(
 ):
     q = (
         db.query(Application)
-        .options(joinedload(Application.candidate))
+        .options(joinedload(Application.candidate), joinedload(Application.job))
         .filter(Application.state == ApplicationState.IN_PROGRESS.value)
     )
     total = q.count()
@@ -91,6 +93,21 @@ def pipeline_active(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/pipeline/event-summaries")
+def pipeline_event_summaries(
+    application_ids: str = Query(""),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    if not application_ids.strip():
+        return {}
+    ids = [int(x) for x in application_ids.split(",") if x.strip().isdigit()]
+    if not ids:
+        return {}
+    summaries = get_event_summaries(db, ids)
+    return {str(k): EventSummaryItem(**v) for k, v in summaries.items()}
 
 
 @router.get("/hired")

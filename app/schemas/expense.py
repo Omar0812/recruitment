@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
+
+from app.schemas.base import AppBaseModel
 
 
 class ExpenseBase(BaseModel):
@@ -16,8 +18,7 @@ class ExpenseCreate(ExpenseBase):
     version: Optional[int] = None
 
 
-class ExpenseRead(ExpenseBase):
-    model_config = ConfigDict(from_attributes=True)
+class ExpenseRead(ExpenseBase, AppBaseModel):
 
     id: int
     version: int = 1

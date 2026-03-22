@@ -24,6 +24,7 @@ from app.schemas.auth import (
     PasswordChange,
     ProfileUpdate,
     RegisterRequest,
+    RegistrationStatusResponse,
     UserRead,
 )
 
@@ -62,6 +63,13 @@ def _create_token(db: Session, user_id: int) -> str:
 def has_users(db: Session = Depends(get_db)):
     count = db.query(User).count()
     return HasUsersResponse(has_users=count > 0)
+
+
+@router.get("/registration-status", response_model=RegistrationStatusResponse)
+def registration_status(db: Session = Depends(get_db)):
+    row = db.query(SystemSetting).filter(SystemSetting.key == "registration_open").first()
+    is_open = row is None or row.value == "true"
+    return RegistrationStatusResponse(registration_open=is_open)
 
 
 @router.get("/check-login-name/{name}", response_model=CheckLoginNameResponse)

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from sqlalchemy import and_, exists, func, not_
+from datetime import datetime
+
+from sqlalchemy import and_, exists, func, not_, select
 from sqlalchemy.orm import Session
 
 from app.models.application import Application
-from app.models.enums import ApplicationState
+from app.models.enums import ApplicationState, EventType
+from app.models.event import Event
 from app.models.legacy import Candidate, Job
 
 
@@ -154,12 +157,86 @@ def _get_latest_applications(db: Session, candidate_ids: list[int]) -> dict:
     rows = db.query(apps).filter(apps.c.rn == 1).all()
 
     result = {}
+    # Collect candidate IDs for HIRED apps to fetch hire_date
+    hired_candidate_ids = [r.candidate_id for r in rows if r.state == ApplicationState.HIRED.value]
+
+    # Fetch hire_date with fallback chain: hire_confirmed.payload.hire_date → offer.onboard_date → hire_confirmed.occurred_at
+    hire_dates: dict[int, str | None] = {}
+    if hired_candidate_ids:
+        hired_apps = (
+            db.query(Application.candidate_id, Application.id)
+            .filter(
+                Application.candidate_id.in_(hired_candidate_ids),
+                Application.state == ApplicationState.HIRED.value,
+            )
+            .all()
+        )
+        hired_app_id_map = {a.candidate_id: a.id for a in hired_apps}
+
+        if hired_app_id_map:
+            app_id_list = list(hired_app_id_map.values())
+
+            # 取 hire_confirmed 事件
+            hire_events = (
+                db.query(Event)
+                .filter(
+                    Event.application_id.in_(app_id_list),
+                    Event.type == EventType.HIRE_CONFIRMED.value,
+                )
+                .order_by(Event.occurred_at.desc())
+                .all()
+            )
+            app_to_hire_event: dict[int, Event] = {}
+            for ev in hire_events:
+                if ev.application_id not in app_to_hire_event:
+                    app_to_hire_event[ev.application_id] = ev
+
+            # 取 offer_recorded 事件（fallback 用）
+            offer_events = (
+                db.query(
+                    Event.application_id,
+                    Event.payload["onboard_date"].as_string().label("onboard_date"),
+                )
+                .filter(
+                    Event.application_id.in_(app_id_list),
+                    Event.type == EventType.OFFER_RECORDED.value,
+                )
+                .order_by(Event.occurred_at.desc())
+                .all()
+            )
+            app_to_onboard: dict[int, str] = {}
+            for ev in offer_events:
+                if ev.application_id not in app_to_onboard and ev.onboard_date:
+                    app_to_onboard[ev.application_id] = ev.onboard_date
+
+            for cid, app_id in hired_app_id_map.items():
+                hd: str | None = None
+                # 1. hire_confirmed.payload.hire_date
+                hire_ev = app_to_hire_event.get(app_id)
+                if hire_ev:
+                    hire_payload = hire_ev.payload or {}
+                    hd = hire_payload.get("hire_date")
+                # 2. fallback: offer.onboard_date
+                if not hd:
+                    hd = app_to_onboard.get(app_id)
+                # 3. fallback: hire_confirmed.occurred_at
+                if not hd and hire_ev and hire_ev.occurred_at:
+                    occurred = hire_ev.occurred_at
+                    if isinstance(occurred, datetime):
+                        hd = occurred.strftime("%Y-%m-%d")
+                    else:
+                        hd = str(occurred)[:10]
+                hire_dates[cid] = hd
+
     for r in rows:
-        result[r.candidate_id] = {
+        entry: dict = {
             "job_title": r.job_title,
             "state": r.state,
             "stage": r.stage,
             "outcome": r.outcome,
             "status_changed_at": r.status_changed_at,
         }
+        if r.state == ApplicationState.HIRED.value:
+            entry["hire_date"] = hire_dates.get(r.candidate_id)
+        result[r.candidate_id] = entry
     return result

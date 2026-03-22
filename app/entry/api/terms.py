@@ -189,6 +189,8 @@ def reorder_terms(body: ReorderRequest, user: User = Depends(current_user), db: 
 
 @router.get("/source-tags/stats")
 def source_tag_stats(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from sqlalchemy import func
+
     from app.models.application import Application
     from app.models.enums import ApplicationState
     from app.models.legacy import Candidate
@@ -199,26 +201,35 @@ def source_tag_stats(user: User = Depends(current_user), db: Session = Depends(g
         .order_by(Term.sort_order, Term.id)
         .all()
     )
+
+    # 一次 GROUP BY 查询所有 source 的候选人数
+    candidate_rows = (
+        db.query(Candidate.source, func.count(Candidate.id))
+        .filter(Candidate.source != None)  # noqa: E711
+        .group_by(Candidate.source)
+        .all()
+    )
+    candidate_map: dict[str, int] = {source: cnt for source, cnt in candidate_rows}
+
+    # 一次 GROUP BY 查询所有 source 的入职数
+    hired_rows = (
+        db.query(Candidate.source, func.count(Application.id))
+        .join(Application, Application.candidate_id == Candidate.id)
+        .filter(
+            Candidate.source != None,  # noqa: E711
+            Application.state == ApplicationState.HIRED.value,
+        )
+        .group_by(Candidate.source)
+        .all()
+    )
+    hired_map: dict[str, int] = {source: cnt for source, cnt in hired_rows}
+
     result = []
     for tag in tags:
-        candidate_count = (
-            db.query(Candidate)
-            .filter(Candidate.source == tag.name)
-            .count()
-        )
-        hired_count = (
-            db.query(Application)
-            .join(Candidate, Application.candidate_id == Candidate.id)
-            .filter(
-                Candidate.source == tag.name,
-                Application.state == ApplicationState.HIRED.value,
-            )
-            .count()
-        )
         result.append({
             "id": tag.id,
             "name": tag.name,
-            "candidate_count": candidate_count,
-            "hired_count": hired_count,
+            "candidate_count": candidate_map.get(tag.name, 0),
+            "hired_count": hired_map.get(tag.name, 0),
         })
     return result

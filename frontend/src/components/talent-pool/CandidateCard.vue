@@ -67,8 +67,8 @@ const statusText = computed(() => {
     return `进行中 · ${la.stage ?? ''}`
   }
   if (la.state === 'HIRED') {
-    const onboardDate = formatShortDate(la.status_changed_at)
-    return `${la.job_title} · ${onboardDate ? `${onboardDate}入职` : '已入职'}`
+    const hireDate = formatShortDate(la.hire_date)
+    return `${la.job_title} · ${hireDate ? `${hireDate}入职` : '已入职'}`
   }
   if (la.state === 'LEFT') {
     return `上次：${la.job_title} · 已离职`

@@ -7,6 +7,7 @@
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/candidates` | 候选人列表，分页 + 多维筛选 |
+| GET | `/candidates/skill-options` | 去重技能标签列表（json_each 展开 + DISTINCT），已排序 |
 | PATCH | `/candidates/{id}/star` | 切换星标（toggle） |
 
 **GET /candidates 查询参数**：
@@ -25,15 +26,17 @@ blacklist        only / exclude（默认全部）
 ```
 
 **返回结构**：`{ items, total, page, page_size }`
-- 每条 item 含 `candidate` 对象 + `latest_application`（最新流程摘要：job_title, state, stage, outcome, status_changed_at）
+- 每条 item 含 `candidate` 对象 + `latest_application`（最新流程摘要：job_title, state, stage, outcome, status_changed_at, hire_date）
+- candidate 对象包含 `created_by_name`（创建人姓名），列表接口通过批量 User 关联查询填充
 - latest_application 优先返回 IN_PROGRESS 状态的流程
+- HIRED 状态时 `hire_date` 从 `hire_confirmed` 事件 payload.hire_date 读取
 
 ## 页面
 
 路由 `/talent-pool`，页面组件 `TalentPoolView.vue`
 
 - **筛选器**（`TalentPoolFilters.vue`）：关键词搜索（300ms 防抖）+ 技能/来源/学历/年限/年龄/流程状态/星标/黑名单 筛选
-- **候选人卡片列表**（`CandidateList.vue` → `CandidateCard.vue`）：分页，点击卡片打开候选人面板。卡片日期显示 `MM-DD`（调用 `utils/date.ts` 的 `formatShortDate`），入职日期显示 `MM-DD 入职`
+- **候选人卡片列表**（`CandidateList.vue` → `CandidateCard.vue`）：分页，点击卡片打开候选人面板。卡片日期显示 `MM-DD`（调用 `utils/date.ts` 的 `formatShortDate`），HIRED 状态入职日期从 `hire_date` 读取显示 `MM-DD 入职`，无 hire_date 时显示「已入职」（不 fallback 到 status_changed_at）
 - **星标**：卡片上直接 toggle，乐观更新（失败回滚 + toast）
 - **来源选项**：从 source-tags + suppliers + 固定值「内推」聚合
 - **技能选项**：从 `/candidates/skill-options` 获取

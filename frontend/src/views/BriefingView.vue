@@ -17,9 +17,13 @@
     <div v-if="state.loading && !state.data" class="briefing-loading">加载中…</div>
 
     <template v-if="state.data">
-      <BriefingPulse :pulse="state.data.pulse" />
-      <BriefingSchedule :schedule="state.data.schedule" />
-      <BriefingTodos :todos="state.data.todos" />
+      <BriefingPulse :pulse="state.data.pulse" @scroll-to="onScrollTo" />
+      <div ref="scheduleRef">
+        <BriefingSchedule :schedule="state.data.schedule" />
+      </div>
+      <div ref="todosRef">
+        <BriefingTodos :todos="state.data.todos" />
+      </div>
       <BriefingFocus :focus="state.data.focus" />
     </template>
 
@@ -41,12 +45,19 @@ import BriefingFocus from '@/components/briefing/BriefingFocus.vue'
 const { state, load } = useBriefing()
 const router = useRouter()
 const dragOver = ref(false)
+const scheduleRef = ref<HTMLElement>()
+const todosRef = ref<HTMLElement>()
 
 const formattedDate = computed(() => formatDateWithWeekday(new Date()))
 
 onMounted(() => {
   load()
 })
+
+function onScrollTo(section: 'schedule' | 'todos') {
+  const el = section === 'schedule' ? scheduleRef.value : todosRef.value
+  el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 function onDragOver() {
   dragOver.value = true

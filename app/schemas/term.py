@@ -1,6 +1,8 @@
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
+
+from app.schemas.base import AppBaseModel
 
 
 class TermBase(BaseModel):
@@ -20,8 +22,7 @@ class TermUpdate(BaseModel):
     version: Optional[int] = None
 
 
-class TermRead(TermBase):
-    model_config = ConfigDict(from_attributes=True)
+class TermRead(TermBase, AppBaseModel):
 
     id: int
     version: int = 1

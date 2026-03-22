@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 # 触发 actions 模块导入，从而完成 register()
@@ -11,6 +12,7 @@ from app.engine.registry import get
 from app.engine.stage import derive
 from app.models.action_receipt import ActionReceipt
 from app.models.application import Application
+from app.models.event import Event
 
 
 def execute(
@@ -59,10 +61,18 @@ def execute(
         return receipt
 
     # 4) 执行动作（写 Event / 可能更新 state/outcome）
-    action_def.handler(db, application, data, actor_type, actor_id)
+    result = action_def.handler(db, application, data, actor_type, actor_id)
+
+    # 收集本次新建的 event（pending = 刚 db.add 尚未 flush，排除 edit/delete 返回的已有 event）
+    is_new_event = isinstance(result, Event) and sa_inspect(result).pending
 
     # 5) stage 派生（基于最新事件链）
     db.flush()
+
+    created_event_ids: list[int] = []
+    if is_new_event and result.id is not None:
+        created_event_ids.append(result.id)
+
     # application.events 可能已在会话里缓存，需先失效再重算
     db.expire(application, ["events"])
     application.stage = derive(application)
@@ -82,4 +92,5 @@ def execute(
     db.add(receipt)
     db.commit()
     db.refresh(receipt)
+    receipt._event_ids = created_event_ids
     return receipt

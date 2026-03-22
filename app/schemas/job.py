@@ -3,6 +3,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from app.schemas.base import AppBaseModel
+
 
 class JobBase(BaseModel):
     title: str
@@ -48,7 +50,7 @@ class JobCloseRequest(BaseModel):
     version: Optional[int] = None
 
 
-class JobRead(JobBase):
+class JobRead(JobBase, AppBaseModel):
     id: int
     version: int = 1
     hired_count: int = 0

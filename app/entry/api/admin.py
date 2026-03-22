@@ -139,14 +139,23 @@ def get_settings(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    from app.utils.encryption import decrypt_value, is_encrypted
+
     rows = db.query(SystemSetting).all()
     settings = {}
     max_version = 1
     for row in rows:
         value = row.value or ""
-        # API Key 脱敏
-        if row.key == "ai_api_key" and value and len(value) > 6:
-            value = value[:6] + "****"
+        # API Key 先解密再脱敏
+        if row.key == "ai_api_key" and value:
+            if is_encrypted(value):
+                try:
+                    value = decrypt_value(value)
+                except Exception:
+                    import logging
+                    logging.getLogger(__name__).warning("API Key 解密失败，返回脱敏原始值")
+            if len(value) > 6:
+                value = value[:6] + "****"
         settings[row.key] = value
         if row.version > max_version:
             max_version = row.version
@@ -159,6 +168,8 @@ def update_settings(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    from app.utils.encryption import encrypt_value
+
     # 乐观锁：检查所有 setting 的 max version
     rows = db.query(SystemSetting).all()
     max_version = max((r.version for r in rows), default=1)
@@ -167,11 +178,14 @@ def update_settings(
 
     row_map = {r.key: r for r in rows}
     for key, value in body.settings.items():
+        save_value = value
+        if key == "ai_api_key" and value:
+            save_value = encrypt_value(value)
         if key in row_map:
-            row_map[key].value = value
+            row_map[key].value = save_value
             row_map[key].version = max_version + 1
         else:
-            db.add(SystemSetting(key=key, value=value, version=max_version + 1))
+            db.add(SystemSetting(key=key, value=save_value, version=max_version + 1))
 
     db.commit()
 

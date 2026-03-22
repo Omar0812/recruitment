@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
+
+from app.schemas.base import AppBaseModel
 
 
 class ApplicationBase(BaseModel):
@@ -12,14 +14,16 @@ class ApplicationBase(BaseModel):
     stage: Optional[str] = None
 
 
-class ApplicationCreate(ApplicationBase):
-    pass
-
-
-class ApplicationRead(ApplicationBase):
-    model_config = ConfigDict(from_attributes=True)
+class ApplicationRead(ApplicationBase, AppBaseModel):
 
     id: int
     created_at: datetime
     updated_at: datetime
     candidate_name: Optional[str] = None
+    job_title: Optional[str] = None
+
+
+class EventSummaryItem(BaseModel):
+    stage_detail: str
+    next_interview_at: Optional[str] = None
+    has_pending_feedback: bool

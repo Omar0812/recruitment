@@ -4,6 +4,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from app.schemas.base import AppBaseModel
+
 
 class RegisterRequest(BaseModel):
     login_name: str
@@ -25,15 +27,13 @@ class PasswordChange(BaseModel):
     new_password: str
 
 
-class UserRead(BaseModel):
+class UserRead(AppBaseModel):
     id: int
     login_name: str
     display_name: Optional[str] = None
     avatar_path: Optional[str] = None
     is_admin: bool
     is_setup_complete: bool
-
-    model_config = {"from_attributes": True}
 
 
 class AuthResponse(BaseModel):
@@ -49,6 +49,10 @@ class CheckLoginNameResponse(BaseModel):
     valid: bool
     available: bool
     message: Optional[str] = None
+
+
+class RegistrationStatusResponse(BaseModel):
+    registration_open: bool
 
 
 class AdminCreateUserRequest(BaseModel):

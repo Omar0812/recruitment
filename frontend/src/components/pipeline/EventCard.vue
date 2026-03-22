@@ -132,6 +132,7 @@
 import { computed, ref, reactive, watch, onUnmounted } from 'vue'
 import { usePipeline } from '@/composables/usePipeline'
 import { updateEvent } from '@/api/pipeline'
+import { SCORE_OPTIONS, TIME_HALF_HOUR_OPTIONS } from '@/utils/constants'
 import { showToastUndo } from '@/composables/useToastUndo'
 import type { EventRecord } from '@/api/types'
 import { formatDateTime, formatDate } from '@/utils/date'
@@ -208,22 +209,7 @@ const BG_RESULT_MAP: Record<string, string> = {
   fail: '未通过',
 }
 
-// 评分 4 档定义
-const SCORE_OPTIONS = [
-  { value: 1, label: '淘汰', color: 'var(--color-urgent, #e53e3e)' },
-  { value: 2, label: '通过，一般', color: '#dd6b20' },
-  { value: 3, label: '通过，良好', color: 'var(--color-primary, #3b82f6)' },
-  { value: 4, label: '通过，优秀', color: '#16a34a' },
-] as const
-
-// 30 分钟档时间选项
-const TIME_HALF_HOUR_OPTIONS = Array.from({ length: 48 }, (_, i) => {
-  const h = String(Math.floor(i / 2)).padStart(2, '0')
-  const m = i % 2 === 0 ? '00' : '30'
-  return `${h}:${m}`
-})
-
-/** 将 ISO datetime 拆为 { date, time }，time 向下取整到 30 分钟档 */
+/**将 ISO datetime 拆为 { date, time }，time 向下取整到 30 分钟档 */
 function splitDateTimeHalfHour(val: string): { date: string; time: string } {
   if (!val) return { date: '', time: '09:00' }
   const d = val.slice(0, 10)
@@ -382,7 +368,7 @@ function startDelete() {
       action_code: 'delete_event',
       target: { type: 'application', id: props.applicationId },
       payload: { event_id: props.event.id },
-    })
+    }).catch(() => {})
   })
 }
 </script>
@@ -548,32 +534,6 @@ select.event-card__edit-input:disabled {
   display: flex;
   gap: var(--space-2);
   margin-top: var(--space-2);
-}
-
-/* 通用按钮 */
-.btn {
-  font-size: 13px;
-  padding: 4px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: opacity 150ms;
-}
-
-.btn:hover { opacity: 0.85; }
-
-.btn--sm {
-  padding: 3px 10px;
-  font-size: 12px;
-}
-
-.btn--ghost {
-  background: transparent;
-  color: var(--color-text-secondary);
-}
-
-.btn--danger {
-  background: var(--color-urgent);
-  color: white;
 }
 
 /* 评分 4 档按钮 */

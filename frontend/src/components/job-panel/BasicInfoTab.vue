@@ -108,7 +108,7 @@ onBeforeUnmount(() => {
 }
 
 .info-label {
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   font-size: 14px;
 }
 
@@ -117,7 +117,7 @@ onBeforeUnmount(() => {
 }
 
 .address {
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   font-size: 13px;
   margin-top: 4px;
   display: flex;
@@ -128,16 +128,16 @@ onBeforeUnmount(() => {
 .copy-btn {
   padding: 2px 8px;
   font-size: 12px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .copy-btn:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .copy-feedback {
@@ -154,6 +154,6 @@ onBeforeUnmount(() => {
 
 .notes {
   white-space: pre-wrap;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 </style>

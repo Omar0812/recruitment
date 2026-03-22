@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -18,6 +20,8 @@ from app.entry.api import (
     suppliers,
     terms,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(auth.router)
@@ -78,13 +82,11 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def _handle_unhandled_error(_: Request, exc: Exception):
-        import traceback
-
+        logger.exception("Unhandled error")
         return JSONResponse(
             status_code=500,
             content={
                 "code": "internal_error",
-                "message": str(exc),
-                "traceback": traceback.format_exception(exc),
+                "message": "服务器内部错误",
             },
         )

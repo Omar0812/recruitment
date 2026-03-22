@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
+
+from app.schemas.base import AppBaseModel
 
 
 class EducationEntry(BaseModel):
@@ -72,8 +74,7 @@ class CandidateCreate(CandidateBase):
     version: Optional[int] = None
 
 
-class CandidateRead(CandidateBase):
-    model_config = ConfigDict(from_attributes=True)
+class CandidateRead(CandidateBase, AppBaseModel):
 
     id: int
     version: int = 1
@@ -83,12 +84,13 @@ class CandidateRead(CandidateBase):
     updated_at: datetime
 
 
-class LatestApplication(BaseModel):
+class LatestApplication(AppBaseModel):
     job_title: str
     state: str
     stage: Optional[str] = None
     outcome: Optional[str] = None
     status_changed_at: Optional[datetime] = None
+    hire_date: Optional[str] = None
 
 
 class CandidateWithApplication(CandidateRead):
@@ -108,7 +110,7 @@ class CandidateDuplicateActiveLink(BaseModel):
     stage: str
 
 
-class CandidateDuplicateLastApplication(BaseModel):
+class CandidateDuplicateLastApplication(AppBaseModel):
     job_title: str
     outcome: Optional[str] = None
     stage: Optional[str] = None

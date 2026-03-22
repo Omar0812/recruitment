@@ -85,6 +85,24 @@ def ensure_all_columns() -> None:
                     WHERE notes IS NULL AND persona IS NOT NULL
                 """))
 
+        # Legacy data migration: offer_recorded payload 字段名统一
+        # cash_monthly → monthly_salary, months → salary_months
+        if "events" in existing_tables:
+            conn.execute(text("""
+                UPDATE events
+                SET payload = json_set(
+                    json_remove(
+                        json_remove(payload, '$.cash_monthly'),
+                        '$.months'
+                    ),
+                    '$.monthly_salary', json_extract(payload, '$.cash_monthly'),
+                    '$.salary_months', json_extract(payload, '$.months')
+                )
+                WHERE type = 'offer_recorded'
+                  AND payload IS NOT NULL
+                  AND json_extract(payload, '$.cash_monthly') IS NOT NULL
+            """))
+
 
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
@@ -110,6 +128,7 @@ def ensure_candidate_attachments_column() -> None:
 
         # 迁移 resume_path → attachments[0]（只迁移 attachments 还是空的行）
         from datetime import datetime, timezone
+        from app.utils.time import to_utc_z, utc_now
         import json
 
         rows = conn.execute(text(
@@ -123,7 +142,7 @@ def ensure_candidate_attachments_column() -> None:
                 "file_path": row[1],
                 "label": "简历",
                 "type": "resume",
-                "created_at": row[2] or datetime.now(timezone.utc).isoformat(),
+                "created_at": row[2] or to_utc_z(utc_now()),
             }], ensure_ascii=False)
             conn.execute(
                 text("UPDATE candidates SET attachments = :att WHERE id = :cid"),

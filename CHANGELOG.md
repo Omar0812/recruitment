@@ -2,6 +2,38 @@
 
 所有版本更新记录。格式遵循 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.8.3] — 2026-03-23
+
+> 全面加固：评审报告 6 批修复 + 查重合并 + 数据分析简化 + CI/测试/备份
+
+### Added
+- 候选人查重合并（新建时自动查重 + 合并 UI）
+- 核心招聘流程集成测试（15 个用例覆盖全链路）
+- GitHub Actions CI（push/PR 自动 pytest + vitest）
+- SQLite 定时备份脚本（热备份 + 完整性验证 + 自动清理）
+- 备注输入框发送按钮
+- 柱状图数值标签（含 0 值）
+- API Key Fernet 加密存储
+
+### Changed
+- 趋势图从双图分栏简化为全宽柱状图 + 粒度切换移至标题旁
+- 入职日期全系统统一从 hire_confirmed.payload.hire_date 读取
+- 已入职薪资列合并显示年总包
+- CSS 变量双轨统一 + 全局 CSS / HTTP 客户端 / toast 去重
+- Pipeline 批量摘要 + 技能标签专用接口（消除 N+1）
+- 500 错误隐藏 traceback + Docker 非 root + 日志持久化
+
+### Fixed
+- 撤回按钮无效（Event ID 捕获）
+- Action 失败 toast 提示 + 备注输入保留
+- datetime 序列化统一 Z 后缀
+- 人才库 created_by_name 填充 + 平均周期负值过滤
+- 候选人面板流程记录 + Offer 字段名统一
+
+### Removed
+- 折线上下文图及相关逻辑
+- 37 项死代码 + aiofiles 依赖
+
 ## [1.8.2] — 2026-03-20
 
 > 多用户系统上线 + 全面修复 + PDF 解析优化

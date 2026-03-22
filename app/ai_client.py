@@ -24,6 +24,7 @@ def _load_config():
     try:
         from app.database import SessionLocal
         from app.models.system_setting import SystemSetting
+        from app.utils.encryption import decrypt_value, encrypt_value, is_encrypted
 
         db = SessionLocal()
         try:
@@ -34,7 +35,24 @@ def _load_config():
             for row in rows:
                 mapped_key = _DB_KEY_MAP.get(row.key)
                 if mapped_key and row.value:
-                    _config[mapped_key] = row.value
+                    value = row.value
+                    # API Key 解密处理
+                    if row.key == "ai_api_key":
+                        if is_encrypted(value):
+                            try:
+                                value = decrypt_value(value)
+                            except Exception:
+                                logger.error("API Key 解密失败（密钥文件可能丢失），AI 功能不可用")
+                                value = ""
+                        elif value:
+                            # 明文旧数据：原样使用 + 自动迁移为密文
+                            try:
+                                row.value = encrypt_value(value)
+                                db.commit()
+                                logger.info("已将明文 API Key 自动迁移为加密存储")
+                            except Exception:
+                                logger.warning("明文 API Key 自动迁移失败，下次重试")
+                    _config[mapped_key] = value
         finally:
             db.close()
     except Exception:
@@ -87,17 +105,6 @@ _FIELD_SCHEMA = """以JSON格式返回，字段如下：
 VISION_SYSTEM_PROMPT = f"你是一个简历解析助手。用户会发送简历图片，请从图片中提取结构化信息。\n\n{_FIELD_SCHEMA}"
 
 TEXT_SYSTEM_PROMPT = f"你是一个简历解析助手。用户会发送简历文本，请从文本中提取结构化信息。\n\n{_FIELD_SCHEMA}"
-
-INSIGHTS_PROMPT = """你是一个招聘助手。根据以下招聘流程数据，给出3-5条简洁可执行的建议。
-
-数据：
-{summary}
-
-要求：
-- 每条建议一句话
-- 聚焦最需要关注的问题
-- 用中文回答
-- 只返回JSON数组，格式：["建议1", "建议2", ...]"""
 
 
 def _is_configured():
@@ -403,62 +410,6 @@ def _call_gemini_text(cfg: dict, text: str) -> str:
 
     resp = model.generate_content(text)
     return resp.text
-
-
-def generate_insights(pipeline_summary: str) -> list:
-    if not _is_configured():
-        return []
-
-    prompt = INSIGHTS_PROMPT.format(summary=pipeline_summary)
-    cfg = _get_config()
-    provider = cfg.get("provider", "openai")
-
-    if provider == "anthropic":
-        raw = _call_anthropic_raw(prompt)
-    elif provider == "gemini":
-        raw = _call_gemini_raw(prompt)
-    else:
-        raw = _call_openai_raw(prompt)
-
-    try:
-        parsed = _load_json_loose(raw)
-        return parsed if isinstance(parsed, list) else [raw]
-    except Exception:
-        return [raw] if raw else []
-
-
-
-def _call_openai_raw(prompt: str) -> str:
-    from openai import OpenAI
-    cfg = _get_config()
-    client = OpenAI(api_key=cfg["api_key"], base_url=cfg.get("base_url"))
-    resp = client.chat.completions.create(
-        model=cfg.get("model", "gpt-4o"),
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return resp.choices[0].message.content
-
-
-
-def _call_anthropic_raw(prompt: str) -> str:
-    import anthropic
-    cfg = _get_config()
-    client = anthropic.Anthropic(api_key=cfg["api_key"])
-    resp = client.messages.create(
-        model=cfg.get("model", "claude-sonnet-4-6"),
-        max_tokens=512,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return resp.content[0].text
-
-
-
-def _call_gemini_raw(prompt: str) -> str:
-    import google.generativeai as genai
-    cfg = _get_config()
-    genai.configure(api_key=cfg["api_key"])
-    model = genai.GenerativeModel(cfg.get("model", "gemini-1.5-flash"))
-    return model.generate_content(prompt).text
 
 
 async def test_connection() -> dict:

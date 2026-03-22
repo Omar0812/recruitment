@@ -6,11 +6,12 @@
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/pipeline/active` | 所有 IN_PROGRESS Application（分页，后端默认 page_size=20，前端覆盖为 100） |
+| GET | `/pipeline/active` | 所有 IN_PROGRESS Application（分页，后端默认 page_size=20，前端覆盖为 100）。响应直接包含 candidate_name、job_title（join 查询），前端无需再逐个请求候选人和岗位详情 |
+| GET | `/pipeline/event-summaries` | 批量事件摘要（query: application_ids=1,2,3）。一次返回多个 Application 的事件摘要，替代逐个 fetchEvents 的 N+1 查询 |
 | GET | `/events?application_id={id}` | Application 事件列表（occurred_at DESC） |
 | PUT | `/events/{id}` | 编辑 Event 的 payload/body |
 | GET | `/actions/available?target_type=application&target_id={id}` | 当前可执行的 action 列表 |
-| POST | `/actions/execute` | 统一动作入口（所有写操作走这里） |
+| POST | `/actions/execute` | 统一动作入口（所有写操作走这里）。响应 event_ids 包含本次新创建的事件 ID 列表（edit/delete/幂等回放返回空列表） |
 | GET | `/candidates/{id}` | 获取候选人信息（行展示用） |
 | GET | `/jobs/{id}` | 获取岗位信息（行展示用） |
 
@@ -28,7 +29,7 @@
 | `advance_to_offer` | ADVANCE_TO_OFFER | IN_PROGRESS + 有 SCREENING_PASSED + 最新面评 conclusion=="pass" | 通过面试 → 进入 Offer |
 | `start_background_check` | START_BACKGROUND_CHECK | IN_PROGRESS + 有 ADVANCE_TO_OFFER | 开始背调 |
 | `record_offer` | OFFER_RECORDED | IN_PROGRESS + 有 ADVANCE_TO_OFFER + 最新背调 result=="pass" | 记录 Offer → 待入职 |
-| `confirm_hire` | HIRE_CONFIRMED | IN_PROGRESS + 有 OFFER_RECORDED | 确认入职（state→HIRED） |
+| `confirm_hire` | HIRE_CONFIRMED | IN_PROGRESS + 有 OFFER_RECORDED | 确认入职（state→HIRED）。自动计算 `hire_date = min(offer.onboard_date, 今天)`，存入 Event payload: {hire_date}。此 hire_date 为全系统入职日期唯一来源 |
 
 **阶段内记录类（3）**：
 
@@ -105,8 +106,8 @@ PipelineView         列表 + 分组视图切换（全部/按岗位/按阶段）
 - **结论中文映射**：EventCard 时间线展示时，面评结论 pass→通过 / reject→淘汰，背调结果 pass→通过 / fail→未通过（存储值不变，仅展示映射）
 - **淘汰自动触发结束**：FeedbackForm 结论「淘汰」→ 展开结束原因选择 → 确认后 end_application(REJECTED)。BackgroundCheckForm「不通过」同理
 - **淘汰原因校验**：FeedbackForm 淘汰原因选「其他」时，具体原因为必填，未填写时显示红色提示「请填写具体淘汰原因」且确认按钮禁用
-- **结束流程交互**：EndFlowPanel 两个 Tab（未通过/候选人退出），选原因（预设列表+其他）→ 确认 → 从列表移除 + Toast 5 秒可撤回
-- **结束撤回**：5 秒内可撤回，撤回逻辑为逐个 delete_event 删除结束产生的 Event
+- **结束流程交互**：EndFlowPanel 两个 Tab（未通过/候选人退出），选原因（预设列表+其他）→ 确认 → 服务器确认成功后从列表移除 + Toast 5 秒可撤回；失败时卡片不移除，toast 显示错误原因
+- **结束撤回**：5 秒内可撤回，撤回逻辑为逐个 delete_event 删除结束产生的 Event。后端 POST /actions/execute 返回 event_ids 供前端撤回使用
 - **Event 编辑**：任意 Event 可编辑 payload/body。有结构化字段的用对应表单编辑，无结构化字段的编辑 body（textarea）
 - **Event 编辑菜单**：每条 Event 右侧常显 `[...]` 按钮（右对齐），点击弹出菜单（编辑/删除），点击菜单外任意位置关闭
 - **Event 编辑权限**：字段分两类——数据字段（不影响流程走向）随时可编辑；结论字段（决定流程推进）在后续已有依赖事件时禁用并提示「请先删除后续记录再修改」。结论字段仅 3 个：`interview_feedback.conclusion`（后续依赖 `advance_to_offer`）、`background_check_result.result`（后续依赖 `offer_recorded`）、`application_ended.outcome`（通常为尾部事件，一般可编辑）
@@ -114,7 +115,8 @@ PipelineView         列表 + 分组视图切换（全部/按岗位/按阶段）
 - **Event 删除**：只能删尾部 Event，首条（application_created）不可删。删除后 stage 自动重新派生
 - **URL 展开**：`?expand={applicationId}` 自动展开该行并滚动到视区
 - **幂等**：command_id 唯一索引，重复请求返回已有 receipt
-- **Composer**：纯文本输入，Enter 发送，调用 `add_note` action 创建 NOTE 类型 Event
+- **Composer**：纯文本输入，Enter 发送，调用 `add_note` action 创建 NOTE 类型 Event。发送流程为「先调 API → 成功后清空输入框」；失败时保留输入内容，toast 提示错误
+- **操作失败反馈**：所有前端 action 调用（推进阶段、记录事件、结束流程、写备注）失败时，统一 toast 显示后端返回的中文错误信息（如「需要先完成面评」），3 秒后自动消失。错误处理集中在 doAction 层，各组件失败时保留当前 UI 状态（表单不关闭、面板不收起、输入不清空）
 
 ## 与其他模块的交互
 

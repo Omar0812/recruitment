@@ -23,6 +23,7 @@ from app.schemas.action import (
     ActionExecuteResponse,
     ActionRequest,
 )
+from app.utils.time import to_utc_z, utc_now
 
 router = APIRouter(prefix="/actions", tags=["actions"])
 
@@ -34,7 +35,7 @@ def _sync_resume_path_to_attachments(candidate: Candidate, resume_path: str) -> 
         "file_path": resume_path,
         "label": "简历",
         "type": "resume",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": to_utc_z(utc_now()),
     }
     replaced = False
     for i, att in enumerate(attachments):
@@ -84,6 +85,7 @@ def _receipt_to_response(receipt, *, message: Optional[str] = None) -> ActionExe
         action_code=receipt.action_code,
         target_type=receipt.target_type,
         target_id=receipt.target_id,
+        event_ids=getattr(receipt, '_event_ids', []),
         state_before=receipt.state_before,
         state_after=receipt.state_after,
         stage_before=receipt.stage_before,
@@ -126,21 +128,107 @@ def _build_entity_mutate(req: ActionRequest, db: Session):
 
         return _mutate
 
-    if req.action_code != "blacklist_candidate":
-        return None
+    if req.action_code == "blacklist_candidate":
+        reason = str(req.payload.get("reason") or "").strip()
+        if not reason:
+            raise BusinessError("blacklist_reason_required", "加入黑名单时必须提供原因")
 
-    reason = str(req.payload.get("reason") or "").strip()
-    if not reason:
-        raise BusinessError("blacklist_reason_required", "加入黑名单时必须提供原因")
+        note = str(req.payload.get("note") or "").strip() or None
 
-    note = str(req.payload.get("note") or "").strip() or None
+        def _mutate(_: Session) -> None:
+            candidate.blacklisted = True
+            candidate.blacklist_reason = reason
+            candidate.blacklist_note = note
 
-    def _mutate(_: Session) -> None:
-        candidate.blacklisted = True
-        candidate.blacklist_reason = reason
-        candidate.blacklist_note = note
+        return _mutate
 
-    return _mutate
+    if req.action_code == "merge_candidate":
+        source_id = req.payload.get("source_candidate_id")
+        if not isinstance(source_id, int):
+            raise BusinessError("source_candidate_id_required", "合并时必须提供被吸收方 ID")
+
+        source = db.get(Candidate, source_id)
+        if source is None:
+            raise HTTPException(404, "Source candidate not found")
+
+        # target = 主档案 (req.target.id), source = 被吸收方
+        target = candidate
+        # 闭包容器：让 mutate 内部的统计数据传递到外层
+        merge_stats: dict = {}
+
+        def _mutate(session: Session) -> None:
+            # ── 守卫 ──
+            target_active = (
+                session.query(Application)
+                .filter(
+                    Application.candidate_id == target.id,
+                    Application.state == ApplicationState.IN_PROGRESS.value,
+                )
+                .first()
+            )
+            source_active = (
+                session.query(Application)
+                .filter(
+                    Application.candidate_id == source.id,
+                    Application.state == ApplicationState.IN_PROGRESS.value,
+                )
+                .first()
+            )
+            if target_active and source_active:
+                raise BusinessError(
+                    "both_in_progress",
+                    "请先结束其中一个流程再合并",
+                )
+            if target.blacklisted or source.blacklisted:
+                raise BusinessError(
+                    "blacklisted",
+                    "请先处理黑名单状态再合并",
+                )
+
+            # ── 标量字段补空 ──
+            scalar_fields = [
+                "phone", "email", "education", "school", "age",
+                "years_exp", "last_company", "last_title", "city",
+                "name_en", "notes",
+            ]
+            for field in scalar_fields:
+                target_val = getattr(target, field, None)
+                source_val = getattr(source, field, None)
+                if not target_val and source_val:
+                    setattr(target, field, source_val)
+
+            # ── starred 合并 ──
+            if source.starred:
+                target.starred = 1
+
+            # ── attachments 追加（按 file_path 去重） ──
+            target_attachments = list(target.attachments or [])
+            source_attachments = list(source.attachments or [])
+            existing_paths = {a.get("file_path") for a in target_attachments}
+            for att in source_attachments:
+                if att.get("file_path") and att["file_path"] not in existing_paths:
+                    target_attachments.append(att)
+                    existing_paths.add(att["file_path"])
+            target.attachments = target_attachments
+
+            # ── Application 转移 ──
+            apps_to_transfer = (
+                session.query(Application)
+                .filter(Application.candidate_id == source.id)
+                .all()
+            )
+            for app in apps_to_transfer:
+                app.candidate_id = target.id
+
+            # ── 被吸收方标记 ──
+            source.merged_into = target.id
+
+            # 统计数据传出
+            merge_stats["transferred_applications"] = len(apps_to_transfer)
+
+        return _mutate, merge_stats
+
+    return None
 
 
 @router.post("/execute", response_model=ActionExecuteResponse)
@@ -213,17 +301,37 @@ def execute_action(
             raise BusinessError(receipt.error_code, receipt.error_message)
         return _receipt_to_response(receipt, message="操作成功")
     else:
-        receipt = entity_write(
-            db,
-            action_code=req.action_code,
-            target_type=req.target.type,
-            target_id=req.target.id,
-            actor_type=actor_type,
-            actor_id=actor_id,
-            command_id=str(req.command_id),
-            details=req.payload or None,
-            mutate=_build_entity_mutate(req, db),
-        )
+        mutate_result = _build_entity_mutate(req, db)
+        # merge_candidate 返回 (mutate, stats) 元组
+        if isinstance(mutate_result, tuple):
+            mutate_fn, merge_stats = mutate_result
+            details = {
+                "target_id": req.target.id,
+                "source_candidate_id": req.payload.get("source_candidate_id"),
+            }
+            receipt = entity_write(
+                db,
+                action_code=req.action_code,
+                target_type=req.target.type,
+                target_id=req.target.id,
+                actor_type=actor_type,
+                actor_id=actor_id,
+                command_id=str(req.command_id),
+                details={**details, **merge_stats},
+                mutate=mutate_fn,
+            )
+        else:
+            receipt = entity_write(
+                db,
+                action_code=req.action_code,
+                target_type=req.target.type,
+                target_id=req.target.id,
+                actor_type=actor_type,
+                actor_id=actor_id,
+                command_id=str(req.command_id),
+                details=req.payload or None,
+                mutate=mutate_result,
+            )
         if not receipt.ok:
             raise BusinessError(receipt.error_code, receipt.error_message)
         return _receipt_to_response(receipt, message="操作成功")

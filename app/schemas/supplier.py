@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
+
+from app.schemas.base import AppBaseModel
 
 
 class SupplierBase(BaseModel):
@@ -26,8 +28,7 @@ class SupplierUpdate(SupplierBase):
     version: Optional[int] = None
 
 
-class SupplierRead(SupplierBase):
-    model_config = ConfigDict(from_attributes=True)
+class SupplierRead(SupplierBase, AppBaseModel):
 
     id: int
     version: int = 1
