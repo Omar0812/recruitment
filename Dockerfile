@@ -33,15 +33,17 @@ COPY frontend/dist/ frontend/dist/
 COPY main.py .
 COPY config.example.json config.example.json
 
-# 创建非特权用户
-RUN adduser --disabled-password --no-create-home appuser
+# 创建非特权用户 + 安装 gosu（用于 entrypoint 降权）
+RUN adduser --disabled-password --no-create-home appuser \
+    && (apt-get update && apt-get install -y --no-install-recommends gosu && apt-get clean && rm -rf /var/lib/apt/lists/* \
+        || (sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources \
+            && apt-get update && apt-get install -y --no-install-recommends gosu && apt-get clean && rm -rf /var/lib/apt/lists/*))
 
-# 确保 data 目录存在且 appuser 有写权限
+# 确保 data 目录存在
 RUN mkdir -p data && chown appuser:appuser data
 
-# 切换到非特权用户
-USER appuser
+COPY entrypoint.sh /entrypoint.sh
 
 EXPOSE 8000
 
-CMD ["python", "main.py"]
+ENTRYPOINT ["/entrypoint.sh"]
