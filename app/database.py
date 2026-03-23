@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Generator
 
 from sqlalchemy import create_engine, event, inspect, text
@@ -5,6 +6,7 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 DATABASE_URL = "sqlite:///./data/recruitment.db"
 
+Path("data").mkdir(parents=True, exist_ok=True)
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
