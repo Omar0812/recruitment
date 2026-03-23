@@ -24,10 +24,10 @@ jobs:
       - name: Run backend tests
         run: pytest tests/ -v --ignore=tests/migration/test_wave1_backfill.py
 
-      - name: Setup Node.js 18
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "20"
 
       - name: Install frontend dependencies
         run: cd frontend && npm ci
