@@ -21,7 +21,7 @@ docker run -d --name recruitment -p 8000:8000 -v ~/recruitment/data:/app/data --
 ### 更新到最新版
 
 ```bash
-docker pull ghcr.io/omar0812/recruitment:latest && docker restart recruitment
+docker pull ghcr.io/omar0812/recruitment:latest && docker rm -f recruitment && docker run -d --name recruitment -p 8000:8000 -v ~/recruitment/data:/app/data --restart unless-stopped ghcr.io/omar0812/recruitment:latest
 ```
 
 ### 停止 / 启动
