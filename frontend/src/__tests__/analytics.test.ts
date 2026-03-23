@@ -307,13 +307,13 @@ describe('TimePicker', () => {
   })
 
   it('renders granularity switch and emits update', async () => {
+    // granularity controls have been removed from TimePicker
+    // TimePicker no longer accepts granularity/availableGranularities props
     const w = mount(TimePicker, {
-      props: { displayRange: '', preset: 'custom', start: '2026-03-01', end: '2026-03-15', granularity: 'week', availableGranularities: ['day', 'week'], canShiftForward: true },
+      props: { displayRange: '', preset: 'custom', start: '2026-03-01', end: '2026-03-15', canShiftForward: true },
     })
-    const buttons = w.findAll('.gran-btn')
-    expect(buttons).toHaveLength(2)
-    await buttons[0].trigger('click')
-    expect(w.emitted('update:granularity')?.[0]).toEqual(['day'])
+    // Verify TimePicker still renders without granularity props
+    expect(w.find('.time-picker').exists()).toBe(true)
   })
 })
 

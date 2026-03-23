@@ -14,11 +14,12 @@ vi.mock('@/api/auth', () => ({
   logout: vi.fn(),
   fetchMe: vi.fn(),
   hasUsers: vi.fn(),
+  getRegistrationStatus: vi.fn(),
   checkLoginName: vi.fn(),
   updateProfile: vi.fn(),
 }))
 
-import { hasUsers } from '@/api/auth'
+import { hasUsers, getRegistrationStatus } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 
 function makeRouter() {
@@ -89,6 +90,7 @@ describe('LoginView', () => {
 
   it('注册链接在 registrationOpen 时显示', async () => {
     vi.mocked(hasUsers).mockResolvedValue({ has_users: true })
+    vi.mocked(getRegistrationStatus).mockResolvedValue({ registration_open: true })
     const router = makeRouter()
     await router.push('/login')
     await router.isReady()

@@ -6,6 +6,7 @@ vi.mock('@/api/channels', () => ({
   fetchSourceTagStats: vi.fn(),
   fetchSupplierStats: vi.fn(),
   fetchExpenses: vi.fn(),
+  fetchHeadhunterFees: vi.fn(),
   fetchCandidatesBySupplier: vi.fn(),
   fetchCandidatesBySource: vi.fn(),
   createSupplier: vi.fn(),
@@ -24,6 +25,7 @@ import {
   createSourceTag,
   fetchCandidatesBySupplier,
   fetchExpenses,
+  fetchHeadhunterFees,
   fetchSupplierStats,
   reorderSourceTags,
 } from '@/api/channels'
@@ -32,6 +34,7 @@ import { useChannels } from '@/composables/useChannels'
 const mockCreateSourceTag = vi.mocked(createSourceTag)
 const mockFetchCandidatesBySupplier = vi.mocked(fetchCandidatesBySupplier)
 const mockFetchExpenses = vi.mocked(fetchExpenses)
+const mockFetchHeadhunterFees = vi.mocked(fetchHeadhunterFees)
 const mockFetchSupplierStats = vi.mocked(fetchSupplierStats)
 const mockReorderSourceTags = vi.mocked(reorderSourceTags)
 
@@ -71,6 +74,7 @@ describe('useChannels', () => {
     mockFetchCandidatesBySupplier.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 100 })
     mockFetchExpenses.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 100 })
     mockFetchSupplierStats.mockResolvedValue({ supplier_id: 1, candidate_count: 0, hired_count: 0 })
+    mockFetchHeadhunterFees.mockResolvedValue([])
 
     const { state, openSupplierPanel } = useChannels()
     const opening = openSupplierPanel(supplier as any)
@@ -90,6 +94,7 @@ describe('useChannels', () => {
     mockFetchCandidatesBySupplier.mockRejectedValue(new Error('加载渠道详情失败'))
     mockFetchExpenses.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 100 })
     mockFetchSupplierStats.mockResolvedValue({ supplier_id: 1, candidate_count: 0, hired_count: 0 })
+    mockFetchHeadhunterFees.mockResolvedValue([])
 
     const { state, openSupplierPanel } = useChannels()
     const opening = openSupplierPanel(supplier as any)

@@ -29,7 +29,7 @@ describe('JobCard', () => {
     })
 
     expect(wrapper.text()).toContain('招聘中')
-    expect(wrapper.text()).toContain('P0')
+    expect(wrapper.text()).toContain('高优')
     expect(wrapper.text()).toContain('0/2 到岗')
     expect(wrapper.find('.progress-bar').exists()).toBe(true)
     expect(wrapper.find('.progress-fill').attributes('style')).toContain('width: 0%')
@@ -46,15 +46,15 @@ describe('JobCard', () => {
     expect(wrapper.find('.progress-fill').attributes('style')).toContain('width: 50%')
   })
 
-  it('headcount=0 时不显示进度条，显示编制文案', () => {
+  it('headcount=0 时不显示进度条', () => {
     const wrapper = mount(JobCard, {
       props: {
         job: { ...baseJob, headcount: 0, hired_count: 0 },
       },
     })
 
-    expect(wrapper.text()).toContain('编制 0 人')
     expect(wrapper.find('.progress-bar').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('到岗')
   })
 
   it('有阶段分布时显示分布文案', () => {

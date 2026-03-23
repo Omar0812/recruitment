@@ -3,8 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Mock API 模块
 vi.mock('@/api/pipeline', () => ({
   fetchActiveApplications: vi.fn(),
-  fetchCandidate: vi.fn(),
-  fetchJob: vi.fn(),
+  fetchEventSummaries: vi.fn(),
   fetchEvents: vi.fn(),
   fetchAvailableActions: vi.fn(),
   executeAction: vi.fn(),
@@ -12,53 +11,27 @@ vi.mock('@/api/pipeline', () => ({
 
 import {
   fetchActiveApplications,
-  fetchCandidate,
-  fetchJob,
+  fetchEventSummaries,
   fetchEvents,
   fetchAvailableActions,
 } from '@/api/pipeline'
 import { usePipeline } from '@/composables/usePipeline'
 
 const mockFetchActive = vi.mocked(fetchActiveApplications)
-const mockFetchCandidate = vi.mocked(fetchCandidate)
-const mockFetchJob = vi.mocked(fetchJob)
+const mockFetchEventSummaries = vi.mocked(fetchEventSummaries)
 const mockFetchEvents = vi.mocked(fetchEvents)
 const mockFetchAvailableActions = vi.mocked(fetchAvailableActions)
 
-function makeApp(id: number, candidateId: number, jobId: number) {
+function makeApp(id: number, candidateId: number, jobId: number, candidateName = '', jobTitle = '') {
   return {
     id,
     candidate_id: candidateId,
+    candidate_name: candidateName,
     job_id: jobId,
+    job_title: jobTitle,
     state: 'IN_PROGRESS',
     outcome: null,
     stage: '简历筛选',
-    created_at: '2026-01-01T00:00:00Z',
-    updated_at: '2026-01-01T00:00:00Z',
-  }
-}
-
-function makeCandidate(id: number, name: string) {
-  return {
-    id,
-    name,
-    phone: null,
-    email: null,
-    source: null,
-    created_at: '2026-01-01T00:00:00Z',
-    updated_at: '2026-01-01T00:00:00Z',
-  }
-}
-
-function makeJob(id: number, title: string) {
-  return {
-    id,
-    title,
-    department: null,
-    location: null,
-    status: 'open',
-    hired_count: 0,
-    stage_distribution: {},
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
   }
@@ -70,19 +43,14 @@ describe('usePipeline', () => {
     vi.resetModules()
   })
 
-  it('loadPipeline 加载数据并做客户端 join', async () => {
+  it('loadPipeline 加载数据并从 application 读取 candidate_name/job_title', async () => {
     mockFetchActive.mockResolvedValue({
-      items: [makeApp(1, 10, 20), makeApp(2, 11, 20)],
+      items: [makeApp(1, 10, 20, '张三', '前端工程师'), makeApp(2, 11, 20, '李四', '前端工程师')],
       total: 2,
       page: 1,
       page_size: 100,
     })
-    mockFetchCandidate.mockImplementation(async (id) =>
-      id === 10
-        ? makeCandidate(10, '张三')
-        : makeCandidate(11, '李四'),
-    )
-    mockFetchJob.mockResolvedValue(makeJob(20, '前端工程师'))
+    mockFetchEventSummaries.mockResolvedValue({})
 
     const { state, loadPipeline } = usePipeline()
     await loadPipeline()
@@ -91,19 +59,16 @@ describe('usePipeline', () => {
     expect(state.items[0].candidate.name).toBe('张三')
     expect(state.items[0].job.title).toBe('前端工程师')
     expect(state.items[1].candidate.name).toBe('李四')
-    // 同一个 jobId 只请求一次
-    expect(mockFetchJob).toHaveBeenCalledTimes(1)
   })
 
   it('expand 切换展开状态 + 懒加载 events', async () => {
     mockFetchActive.mockResolvedValue({
-      items: [makeApp(1, 10, 20)],
+      items: [makeApp(1, 10, 20, '张三', '前端')],
       total: 1,
       page: 1,
       page_size: 100,
     })
-    mockFetchCandidate.mockResolvedValue(makeCandidate(10, '张三'))
-    mockFetchJob.mockResolvedValue(makeJob(20, '前端'))
+    mockFetchEventSummaries.mockResolvedValue({})
 
     const events = [
       {
@@ -140,6 +105,7 @@ describe('usePipeline', () => {
   it('loading 状态正确切换', async () => {
     let resolve!: (v: any) => void
     mockFetchActive.mockReturnValue(new Promise((r) => { resolve = r }))
+    mockFetchEventSummaries.mockResolvedValue({})
 
     const { state, loadPipeline } = usePipeline()
     expect(state.loading).toBe(false)
@@ -163,13 +129,12 @@ describe('usePipeline', () => {
     expect(state.loading).toBe(false)
 
     mockFetchActive.mockResolvedValueOnce({
-      items: [makeApp(1, 10, 20)],
+      items: [makeApp(1, 10, 20, '张三', '前端工程师')],
       total: 1,
       page: 1,
       page_size: 100,
     })
-    mockFetchCandidate.mockResolvedValueOnce(makeCandidate(10, '张三'))
-    mockFetchJob.mockResolvedValueOnce(makeJob(20, '前端工程师'))
+    mockFetchEventSummaries.mockResolvedValue({})
 
     await loadPipeline()
 
@@ -180,24 +145,19 @@ describe('usePipeline', () => {
 
   describe('分组视图', () => {
     async function loadTwoItems() {
-      const { fetchActiveApplications, fetchCandidate, fetchJob } = await import('@/api/pipeline')
+      const { fetchActiveApplications, fetchEventSummaries } = await import('@/api/pipeline')
       const { usePipeline } = await import('@/composables/usePipeline')
 
       vi.mocked(fetchActiveApplications).mockResolvedValue({
         items: [
-          { ...makeApp(1, 10, 20), stage: '简历筛选' },
-          { ...makeApp(2, 11, 21), stage: '面试' },
+          { ...makeApp(1, 10, 20, '张三', '前端工程师'), stage: '简历筛选' },
+          { ...makeApp(2, 11, 21, '李四', '后端工程师'), stage: '面试' },
         ],
         total: 2,
         page: 1,
         page_size: 100,
       })
-      vi.mocked(fetchCandidate).mockImplementation(async (id) =>
-        id === 10 ? makeCandidate(10, '张三') : makeCandidate(11, '李四'),
-      )
-      vi.mocked(fetchJob).mockImplementation(async (id) =>
-        id === 20 ? makeJob(20, '前端工程师') : makeJob(21, '后端工程师'),
-      )
+      vi.mocked(fetchEventSummaries).mockResolvedValue({})
       const pipeline = usePipeline()
       await pipeline.loadPipeline()
       return pipeline

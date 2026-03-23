@@ -12,11 +12,6 @@ wheels/
 openspec/
 alembic/
 alembic.ini
-frontend/package.json
-frontend/package-lock.json
-frontend/tsconfig*.json
-frontend/vite.config.ts
-frontend/index.html
 frontend/README.md
 frontend/.vscode/
 CLAUDE.md

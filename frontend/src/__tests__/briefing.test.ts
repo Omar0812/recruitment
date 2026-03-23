@@ -131,14 +131,15 @@ describe('BriefingPulse', () => {
   it('进行中可点击跳转', async () => {
     const w = mount(BriefingPulse, { props: { pulse } })
     const links = w.findAll('.pulse-item--link')
-    await links[0].trigger('click')
+    // links[0]=今日面试(scroll-to), [1]=待办(scroll-to), [2]=进行中, [3]=open岗位
+    await links[2].trigger('click')
     expect(mockPush).toHaveBeenCalledWith('/pipeline')
   })
 
   it('open 岗位可点击跳转', async () => {
     const w = mount(BriefingPulse, { props: { pulse } })
     const links = w.findAll('.pulse-item--link')
-    await links[1].trigger('click')
+    await links[3].trigger('click')
     expect(mockPush).toHaveBeenCalledWith('/jobs')
   })
 })
@@ -266,7 +267,7 @@ describe('BriefingTodos', () => {
 
   it('高优标签显示', () => {
     const w = mount(BriefingTodos, { props: { todos } })
-    expect(w.find('.todo-priority').text()).toBe('P0')
+    expect(w.find('.todo-priority').text()).toBe('高优')
   })
 
   it('待分配点击跳转人才库无流程筛选', async () => {

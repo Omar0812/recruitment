@@ -132,7 +132,7 @@ describe('useCandidateCreate', () => {
 
     await cc.proceedWithFiles()
 
-    expect(mockUploadFile).toHaveBeenCalledWith(file)
+    expect(mockUploadFile).toHaveBeenCalledWith(file, expect.any(Function))
     expect(cc.state.step).toBe('form')
     expect(cc.state.uploadResult).toEqual({
       file_id: 'f-1',
@@ -164,7 +164,7 @@ describe('useCandidateCreate', () => {
 
   // ── 查重 ──
 
-  it('triggerDuplicateCheck 防抖调用 checkDuplicate', async () => {
+  it('triggerDuplicateCheck 调用 checkDuplicate', async () => {
     const dupRes = {
       matches: [],
       requires_decision: false,
@@ -176,11 +176,7 @@ describe('useCandidateCreate', () => {
     cc.state.form.phone = '13800138000'
     cc.triggerDuplicateCheck()
 
-    // 未到防抖时间，不应调用
-    expect(mockCheckDuplicate).not.toHaveBeenCalled()
-
-    // 推进定时器
-    vi.advanceTimersByTime(600)
+    // triggerDuplicateCheck 直接调用（无防抖）
     await vi.waitFor(() => {
       expect(mockCheckDuplicate).toHaveBeenCalledTimes(1)
     })

@@ -23,7 +23,7 @@ describe('FileUploadZone', () => {
       props: { files: [], uploading: false, error: null },
     })
     expect(wrapper.text()).toContain('拖拽简历文件到这里，或点击选择')
-    expect(wrapper.text()).toContain('支持 PDF / DOC / DOCX，单个文件不超过 20MB')
+    expect(wrapper.text()).toContain('支持 PDF / DOCX / 图片，单个文件不超过 100MB')
     expect(wrapper.text()).toContain('不上传文件，直接填写')
   })
 
@@ -129,11 +129,11 @@ describe('FileUploadZone', () => {
     })
 
     await chooseFiles(wrapper, [
-      makeFile('超大.pdf', 20 * 1024 * 1024 + 1),
+      makeFile('超大.pdf', 100 * 1024 * 1024 + 1),
       makeFile('正常.docx', 2048, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
     ])
 
-    expect(wrapper.text()).toContain('文件大小超过 20MB 限制：超大.pdf')
+    expect(wrapper.text()).toContain('文件大小超过 100MB 限制：超大.pdf')
     const emitted = wrapper.emitted('update:files')
     expect(emitted).toBeTruthy()
     expect((emitted![0][0] as File[]).map((file) => file.name)).toEqual(['正常.docx'])

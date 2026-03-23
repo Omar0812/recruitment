@@ -366,7 +366,7 @@ describe('CandidateCreateView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    expect(mockUploadFile).toHaveBeenCalledWith(expect.objectContaining({ name: '张三_简历.pdf' }))
+    expect(mockUploadFile).toHaveBeenCalledWith(expect.objectContaining({ name: '张三_简历.pdf' }), expect.any(Function))
     expect(wrapper.text()).toContain('基本信息')
     expect(wrapper.text()).toContain('确认建档')
   })

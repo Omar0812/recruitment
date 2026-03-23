@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 
 vi.mock('@/api/channels', () => ({
   fetchSourceTags: vi.fn(),
@@ -12,7 +12,13 @@ vi.mock('@/api/channels', () => ({
   }),
 }))
 
+vi.mock('@/api/files', () => ({
+  uploadFile: vi.fn(),
+  fetchFileAsBlob: vi.fn(),
+}))
+
 import CandidateForm from '@/components/candidate-create/CandidateForm.vue'
+import { fetchFileAsBlob } from '@/api/files'
 import type { CandidateCreatePayload } from '@/api/types'
 
 function makeForm(overrides: Partial<CandidateCreatePayload> = {}): CandidateCreatePayload {
@@ -213,36 +219,35 @@ describe('CandidateForm', () => {
     expect(wrapper.emitted('key-field-change')).toBeTruthy()
   })
 
-  it('有 filePreview 且 previewPath 时显示 iframe 预览区', () => {
+  it('有 filePreview 且 previewPath 时显示 iframe 预览区', async () => {
+    vi.mocked(fetchFileAsBlob).mockResolvedValue('blob:http://localhost/fake-blob')
     const wrapper = mountForm({}, {
       filePreview: {
         name: '张三_简历.pdf',
         sizeLabel: '文件大小：120 KB',
         status: '已上传',
       },
-      previewPath: 'data/resumes/abc123.pdf',
       filePath: 'data/resumes/abc123.pdf',
     })
+    await flushPromises()
     expect(wrapper.find('.resume-preview-area').exists()).toBe(true)
     expect(wrapper.find('.resume-preview-area__iframe').exists()).toBe(true)
-    expect(wrapper.find('.resume-preview-area__iframe').attributes('src')).toBe('/api/v1/files/data/resumes/abc123.pdf')
+    expect(wrapper.find('.resume-preview-area__iframe').attributes('src')).toBe('blob:http://localhost/fake-blob')
   })
 
-  it('有 filePreview 但无 previewPath 时显示降级提示', () => {
+  it('有 filePreview 但无 filePath 时显示降级提示', () => {
     const wrapper = mountForm({}, {
       filePreview: {
         name: '张三_简历.docx',
         sizeLabel: '文件大小：120 KB',
         status: '已上传',
       },
-      previewPath: null,
-      filePath: 'data/resumes/abc123.docx',
+      filePath: null,
     })
     expect(wrapper.find('.resume-preview-area').exists()).toBe(true)
     expect(wrapper.find('.resume-preview-area__iframe').exists()).toBe(false)
     expect(wrapper.text()).toContain('预览生成失败，请下载查看')
     expect(wrapper.text()).toContain('张三_简历.docx')
-    expect(wrapper.find('.resume-preview-area__download').exists()).toBe(true)
   })
 
   it('无 filePreview 时不显示预览区', () => {

@@ -3,8 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 
 const pipelineApi = vi.hoisted(() => ({
   fetchActiveApplications: vi.fn(),
-  fetchCandidate: vi.fn(),
-  fetchJob: vi.fn(),
+  fetchEventSummaries: vi.fn(),
   fetchEvents: vi.fn(),
   fetchAvailableActions: vi.fn(),
   executeAction: vi.fn(),
@@ -29,48 +28,16 @@ vi.mock('@/components/pipeline/PipelineRow.vue', () => ({
   },
 }))
 
-function makeApp(id: number, candidateId: number, jobId: number) {
+function makeApp(id: number, candidateId: number, jobId: number, candidateName = '', jobTitle = '') {
   return {
     id,
     candidate_id: candidateId,
+    candidate_name: candidateName,
     job_id: jobId,
+    job_title: jobTitle,
     state: 'IN_PROGRESS',
     outcome: null,
     stage: '简历筛选',
-    created_at: '2026-01-01T00:00:00Z',
-    updated_at: '2026-01-01T00:00:00Z',
-  }
-}
-
-function makeCandidate(id: number, name: string) {
-  return {
-    id,
-    name,
-    phone: null,
-    email: null,
-    source: null,
-    created_at: '2026-01-01T00:00:00Z',
-    updated_at: '2026-01-01T00:00:00Z',
-  }
-}
-
-function makeJob(id: number, title: string) {
-  return {
-    id,
-    title,
-    department: null,
-    location_name: null,
-    location_address: null,
-    headcount: 1,
-    jd: null,
-    priority: null,
-    target_onboard_date: null,
-    notes: null,
-    status: 'open',
-    close_reason: null,
-    closed_at: null,
-    hired_count: 0,
-    stage_distribution: {},
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
   }
@@ -107,6 +74,7 @@ describe('PipelineView', () => {
       page: 1,
       page_size: 100,
     })
+    pipelineApi.fetchEventSummaries.mockResolvedValue({})
 
     const wrapper = await mountView()
 
@@ -119,13 +87,12 @@ describe('PipelineView', () => {
     pipelineApi.fetchActiveApplications
       .mockRejectedValueOnce(new Error('列表加载失败'))
       .mockResolvedValueOnce({
-        items: [makeApp(1, 10, 20)],
+        items: [makeApp(1, 10, 20, '张三', '前端工程师')],
         total: 1,
         page: 1,
         page_size: 100,
       })
-    pipelineApi.fetchCandidate.mockResolvedValueOnce(makeCandidate(10, '张三'))
-    pipelineApi.fetchJob.mockResolvedValueOnce(makeJob(20, '前端工程师'))
+    pipelineApi.fetchEventSummaries.mockResolvedValue({})
 
     const wrapper = await mountView()
     expect(wrapper.get('[role="alert"]').text()).toContain('列表加载失败')
@@ -142,19 +109,14 @@ describe('PipelineView', () => {
     function setupTwoApps() {
       pipelineApi.fetchActiveApplications.mockResolvedValue({
         items: [
-          { ...makeApp(1, 10, 20), stage: '简历筛选' },
-          { ...makeApp(2, 11, 21), stage: '面试' },
+          { ...makeApp(1, 10, 20, '张三', '前端工程师'), stage: '简历筛选' },
+          { ...makeApp(2, 11, 21, '李四', '后端工程师'), stage: '面试' },
         ],
         total: 2,
         page: 1,
         page_size: 100,
       })
-      pipelineApi.fetchCandidate.mockImplementation(async (id: number) =>
-        id === 10 ? makeCandidate(10, '张三') : makeCandidate(11, '李四'),
-      )
-      pipelineApi.fetchJob.mockImplementation(async (id: number) =>
-        id === 20 ? makeJob(20, '前端工程师') : makeJob(21, '后端工程师'),
-      )
+      pipelineApi.fetchEventSummaries.mockResolvedValue({})
     }
 
     it('切换按钮组可见且默认全部激活', async () => {

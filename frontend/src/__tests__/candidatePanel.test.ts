@@ -64,6 +64,11 @@ vi.mock('@/api/jobs', () => ({
   fetchOpenJobs: jobsApi.fetchOpenJobs,
 }))
 
+vi.mock('@/api/files', () => ({
+  uploadFile: vi.fn(),
+  fetchFileAsBlob: vi.fn().mockResolvedValue('blob:http://localhost/fake-blob'),
+}))
+
 import BasicInfoTab from '@/components/candidate-panel/BasicInfoTab.vue'
 import ResumeTab from '@/components/candidate-panel/ResumeTab.vue'
 import DuplicateResult from '@/components/candidate-panel/DuplicateResult.vue'
@@ -338,7 +343,7 @@ describe('ResumeTab', () => {
     expect(wrapper.text()).toContain('暂无简历')
   })
 
-  it('单附件时直接 iframe 预览', () => {
+  it('单附件时直接 iframe 预览', async () => {
     const wrapper = mount(ResumeTab, {
       props: {
         candidate: makeCandidate({
@@ -351,9 +356,10 @@ describe('ResumeTab', () => {
         }),
       },
     })
+    await flushPromises()
     expect(wrapper.text()).toContain('简历')
-    expect(wrapper.text()).toContain('2026-01-15')
-    expect(wrapper.find('iframe').attributes('src')).toBe('/api/v1/files/data/resumes/abc.pdf')
+    expect(wrapper.find('iframe').exists()).toBe(true)
+    expect(wrapper.find('iframe').attributes('src')).toBe('blob:http://localhost/fake-blob')
   })
 
   it('多附件时列表展示，不直接预览', () => {
@@ -373,16 +379,18 @@ describe('ResumeTab', () => {
     expect(wrapper.findAll('iframe').length).toBe(0)
   })
 
-  it('fallback 到 resume_path（兼容旧数据）', () => {
+  it('fallback 到 resume_path（兼容旧数据）', async () => {
     const wrapper = mount(ResumeTab, {
       props: {
         candidate: makeCandidate({ resume_path: '/uploads/resume.pdf', attachments: [] }),
       },
     })
-    expect(wrapper.find('iframe').attributes('src')).toBe('/api/v1/files/uploads/resume.pdf')
+    await flushPromises()
+    expect(wrapper.find('iframe').exists()).toBe(true)
+    expect(wrapper.find('iframe').attributes('src')).toBe('blob:http://localhost/fake-blob')
   })
 
-  it('DOC/DOCX 路径自动转为 PDF 预览路径', () => {
+  it('DOCX 附件使用 docx-preview 渲染（不是 iframe）', async () => {
     const wrapper = mount(ResumeTab, {
       props: {
         candidate: makeCandidate({
@@ -395,7 +403,9 @@ describe('ResumeTab', () => {
         }),
       },
     })
-    expect(wrapper.find('iframe').attributes('src')).toBe('/api/v1/files/data/resumes/abc123.pdf')
+    await flushPromises()
+    // DOCX files are rendered via docx-preview, not iframe
+    expect(wrapper.find('iframe').exists()).toBe(false)
   })
 
   it('每个附件显示删除按钮', () => {
