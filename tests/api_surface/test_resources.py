@@ -92,7 +92,6 @@ def test_candidates_detail_returns_structured_json_fields(client, db):
             "role": "主程",
             "start": "2024-01",
             "end": "2024-12",
-            "tech_stack": "Vue 3, FastAPI",
             "description": "主导系统重构",
         }
     ]
@@ -143,7 +142,6 @@ def test_create_candidate_persists_record_and_receipt(client, db):
             "role": "负责人",
             "start": None,
             "end": None,
-            "tech_stack": "Vue 3, FastAPI",
             "description": None,
         }
     ]
@@ -167,11 +165,11 @@ def test_update_candidate_persists_record_and_receipt(client, db, seed):
         "name": "张三-更新",
         "phone": "13800138001",
         "source": "拉勾",
+        "version": candidate.version,
         "project_experience": [
             {
                 "name": "招聘中台",
                 "role": "主程",
-                "tech_stack": "TypeScript",
                 "description": "升级流程配置",
             }
         ],
@@ -189,7 +187,6 @@ def test_update_candidate_persists_record_and_receipt(client, db, seed):
         {
             "name": "招聘中台",
             "role": "主程",
-            "tech_stack": "TypeScript",
             "description": "升级流程配置",
         }
     ]

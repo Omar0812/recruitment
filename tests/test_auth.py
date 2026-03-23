@@ -274,8 +274,8 @@ class TestOptimisticLock:
         }, headers=headers)
         assert r2.status_code == 409
 
-    def test_update_without_version_ok(self, client, db):
-        """不传 version 时跳过检查（兼容旧客户端）。"""
+    def test_update_without_version_returns_422(self, client, db):
+        """不传 version 时返回 422。"""
         from app.models.legacy import Job
         job = Job(title="No Version Job", department="IT", city="SH", location_name="SH", jd="d", status="open")
         db.add(job)
@@ -283,7 +283,7 @@ class TestOptimisticLock:
 
         headers = self._auth_header(client, db)
         r = client.put(f"/api/v1/jobs/{job.id}", json={"title": "OK"}, headers=headers)
-        assert r.status_code == 200
+        assert r.status_code == 422
 
 
 # ── 认证横切 ──
@@ -406,7 +406,7 @@ class TestActorIdInjection:
         db.add(job)
         db.flush()
 
-        r = client.put(f"/api/v1/jobs/{job.id}", json={"title": "Updated"}, headers=headers)
+        r = client.put(f"/api/v1/jobs/{job.id}", json={"title": "Updated", "version": job.version}, headers=headers)
         assert r.status_code == 200
 
         log = db.query(AuditLog).filter(
@@ -420,6 +420,7 @@ class TestActorIdInjection:
         """POST /actions/execute 创建的 event 带 actor_id。"""
         from app.models.legacy import Job, Candidate
         from app.models.application import Application
+        from app.models.enums import ApplicationState
         from app.models.event import Event
 
         user_id, headers = self._setup(client, db)
@@ -431,7 +432,7 @@ class TestActorIdInjection:
         cand = Candidate(name="张三", phone="13800000000")
         db.add(cand)
         db.flush()
-        app = Application(candidate_id=cand.id, job_id=job.id, state="screening")
+        app = Application(candidate_id=cand.id, job_id=job.id, state=ApplicationState.IN_PROGRESS.value)
         db.add(app)
         db.flush()
 

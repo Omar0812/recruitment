@@ -102,6 +102,12 @@ class TestExecutorHappyPath:
                 payload={}, actor_type="human", command_id=_uid())
         execute(db, action_code="pass_screening", application=app_in_progress,
                 payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="schedule_interview", application=app_in_progress,
+                payload={"scheduled_at": "2026-03-01T10:00:00Z"},
+                actor_type="human", command_id=_uid())
+        execute(db, action_code="record_interview_feedback", application=app_in_progress,
+                payload={"conclusion": "pass", "score": 4},
+                actor_type="human", command_id=_uid())
         receipt = execute(db, action_code="advance_to_offer", application=app_in_progress,
                           payload={}, actor_type="human", command_id=_uid())
         assert receipt.stage_after == "Offer沟通"
@@ -112,8 +118,18 @@ class TestExecutorHappyPath:
                 payload={}, actor_type="human", command_id=_uid())
         execute(db, action_code="pass_screening", application=a,
                 payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="schedule_interview", application=a,
+                payload={"scheduled_at": "2026-03-01T10:00:00Z"},
+                actor_type="human", command_id=_uid())
+        execute(db, action_code="record_interview_feedback", application=a,
+                payload={"conclusion": "pass", "score": 4},
+                actor_type="human", command_id=_uid())
         execute(db, action_code="advance_to_offer", application=a,
                 payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="start_background_check", application=a,
+                payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="record_background_check_result", application=a,
+                payload={"result": "pass"}, actor_type="human", command_id=_uid())
         execute(db, action_code="record_offer", application=a,
                 payload={"cash_monthly": 30000}, actor_type="human", command_id=_uid())
         receipt = execute(db, action_code="confirm_hire", application=a,
@@ -188,8 +204,18 @@ class TestLifecycle:
                 payload={}, actor_type="human", command_id=_uid())
         execute(db, action_code="pass_screening", application=a,
                 payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="schedule_interview", application=a,
+                payload={"scheduled_at": "2026-03-01T10:00:00Z"},
+                actor_type="human", command_id=_uid())
+        execute(db, action_code="record_interview_feedback", application=a,
+                payload={"conclusion": "pass", "score": 4},
+                actor_type="human", command_id=_uid())
         execute(db, action_code="advance_to_offer", application=a,
                 payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="start_background_check", application=a,
+                payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="record_background_check_result", application=a,
+                payload={"result": "pass"}, actor_type="human", command_id=_uid())
         execute(db, action_code="record_offer", application=a,
                 payload={}, actor_type="human", command_id=_uid())
         execute(db, action_code="confirm_hire", application=a,
@@ -292,8 +318,18 @@ class TestReceiptSnapshot:
                 payload={}, actor_type="human", command_id=_uid())
         execute(db, action_code="pass_screening", application=a,
                 payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="schedule_interview", application=a,
+                payload={"scheduled_at": "2026-03-01T10:00:00Z"},
+                actor_type="human", command_id=_uid())
+        execute(db, action_code="record_interview_feedback", application=a,
+                payload={"conclusion": "pass", "score": 4},
+                actor_type="human", command_id=_uid())
         execute(db, action_code="advance_to_offer", application=a,
                 payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="start_background_check", application=a,
+                payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="record_background_check_result", application=a,
+                payload={"result": "pass"}, actor_type="human", command_id=_uid())
         execute(db, action_code="record_offer", application=a,
                 payload={}, actor_type="human", command_id=_uid())
 

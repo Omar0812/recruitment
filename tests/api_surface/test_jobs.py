@@ -172,7 +172,7 @@ def test_close_job_marks_job_closed_and_ends_active_applications(client, db):
     db.add(application)
     db.commit()
 
-    response = client.post(f"/api/v1/jobs/{job.id}/close", json={"reason": "需求取消"})
+    response = client.post(f"/api/v1/jobs/{job.id}/close", json={"reason": "需求取消", "version": job.version})
 
     assert response.status_code == 200
     body = response.json()
@@ -185,7 +185,7 @@ def test_close_job_marks_job_closed_and_ends_active_applications(client, db):
     assert job.status == "closed"
     assert job.close_reason == "需求取消"
     assert application.state == ApplicationState.REJECTED.value
-    assert application.outcome == "岗位关闭"
+    assert application.outcome == "rejected"
 
     receipt = db.query(ActionReceipt).filter_by(action_code="close_job", target_id=job.id).one()
     assert receipt.ok is True

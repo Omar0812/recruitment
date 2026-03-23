@@ -16,9 +16,10 @@ from app.models.enums import ActorType, ApplicationState, EventType
 from app.models.event import Event
 from app.models.legacy import Candidate, Job
 from app.query.briefing import get_today_briefing
+from app.utils.time import BIZ_TZ
 
-_NOW = datetime.now(timezone.utc)
-_TODAY = _NOW.date()
+_NOW = datetime.utcnow()  # naive — matches what SQLite returns
+_TODAY = datetime.now(timezone.utc).astimezone(BIZ_TZ).date()
 _YESTERDAY = _TODAY - timedelta(days=1)
 _TOMORROW = _TODAY + timedelta(days=1)
 
@@ -28,7 +29,7 @@ def _uid():
 
 
 def _dt(d, hour=12):
-    """SQLite 存 naive datetime，测试也用 naive。"""
+    """Naive datetime — consistent with what SQLite stores and returns."""
     return datetime(d.year, d.month, d.day, hour, 0, 0)
 
 

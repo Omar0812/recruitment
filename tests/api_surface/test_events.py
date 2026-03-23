@@ -29,7 +29,7 @@ class TestUpdateEvent:
 
         resp = client.put(
             f"/api/v1/events/{interview_event.id}",
-            json={"payload": {"interviewer": "李总", "location": "会议室A"}},
+            json={"payload": {"interviewer": "李总", "location": "会议室A"}, "version": interview_event.version},
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -52,7 +52,7 @@ class TestUpdateEvent:
 
         resp = client.put(
             f"/api/v1/events/{note_event.id}",
-            json={"body": "修改后的备注"},
+            json={"body": "修改后的备注", "version": note_event.version},
         )
         assert resp.status_code == 200
         assert resp.json()["body"] == "修改后的备注"
@@ -75,7 +75,7 @@ class TestUpdateEvent:
 
         client.put(
             f"/api/v1/events/{note_event.id}",
-            json={"body": "审计修改"},
+            json={"body": "审计修改", "version": note_event.version},
         )
 
         audit = db.query(AuditLog).filter_by(action_code="edit_event").first()
