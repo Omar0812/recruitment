@@ -76,7 +76,7 @@ def _make_job(db, title="工程师", status="open", priority=None,
     return j
 
 
-def _make_app(db, candidate, job, state=ApplicationState.IN_PROGRESS.value, stage="简历筛选"):
+def _make_app(db, candidate, job, state=ApplicationState.IN_PROGRESS.value, stage="新申请"):
     a = Application(candidate_id=candidate.id, job_id=job.id, state=state, stage=stage)
     db.add(a)
     db.flush()

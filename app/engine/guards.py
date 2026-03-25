@@ -54,6 +54,17 @@ def guard_application_created(application, payload: dict) -> None:
 
 def guard_screening_passed(application, payload: dict) -> None:
     require_active(application)
+    require_event_exists(
+        application, EventType.SCREENING_ASSIGNED.value, "推进到简历筛选",
+    )
+
+
+def guard_assign_screening(application, payload: dict) -> None:
+    """推进到简历筛选：IN_PROGRESS + 无 SCREENING_ASSIGNED 事件。"""
+    require_active(application)
+    for ev in application.events:
+        if ev.type == EventType.SCREENING_ASSIGNED.value:
+            raise BusinessError("already_screening", "已推进到简历筛选，无需重复操作")
 
 
 def guard_interview_scheduled(application, payload: dict) -> None:

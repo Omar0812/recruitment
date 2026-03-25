@@ -81,8 +81,8 @@ class TestExecutorHappyPath:
             command_id=_uid(),
         )
         assert receipt.ok is True
-        assert receipt.stage_after == "简历筛选"
-        assert app_in_progress.stage == "简历筛选"
+        assert receipt.stage_after == "新申请"
+        assert app_in_progress.stage == "新申请"
         events = db.query(Event).filter_by(application_id=app_in_progress.id).all()
         assert len(events) == 1
         assert events[0].type == EventType.APPLICATION_CREATED.value
@@ -91,6 +91,9 @@ class TestExecutorHappyPath:
         # 先 create
         execute(db, action_code="create_application", application=app_in_progress,
                 payload={}, actor_type="human", command_id=_uid())
+        # assign_screening（pass_screening 的前置条件）
+        execute(db, action_code="assign_screening", application=app_in_progress,
+                payload={"screener": "测试"}, actor_type="human", command_id=_uid())
         receipt = execute(db, action_code="pass_screening", application=app_in_progress,
                           payload={}, actor_type="human", command_id=_uid())
         assert receipt.ok is True
@@ -100,6 +103,8 @@ class TestExecutorHappyPath:
     def test_advance_to_offer(self, db, app_in_progress):
         execute(db, action_code="create_application", application=app_in_progress,
                 payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="assign_screening", application=app_in_progress,
+                payload={"screener": "测试"}, actor_type="human", command_id=_uid())
         execute(db, action_code="pass_screening", application=app_in_progress,
                 payload={}, actor_type="human", command_id=_uid())
         execute(db, action_code="schedule_interview", application=app_in_progress,
@@ -116,6 +121,8 @@ class TestExecutorHappyPath:
         a = app_in_progress
         execute(db, action_code="create_application", application=a,
                 payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="assign_screening", application=a,
+                payload={"screener": "测试"}, actor_type="human", command_id=_uid())
         execute(db, action_code="pass_screening", application=a,
                 payload={}, actor_type="human", command_id=_uid())
         execute(db, action_code="schedule_interview", application=a,
@@ -149,6 +156,8 @@ class TestInStageRecords:
         a = app_in_progress
         execute(db, action_code="create_application", application=a,
                 payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="assign_screening", application=a,
+                payload={"screener": "测试"}, actor_type="human", command_id=_uid())
         execute(db, action_code="pass_screening", application=a,
                 payload={}, actor_type="human", command_id=_uid())
         receipt = execute(db, action_code="schedule_interview", application=a,
@@ -164,7 +173,7 @@ class TestInStageRecords:
                           payload={"body": "候选人沟通意愿强"},
                           actor_type="human", command_id=_uid())
         assert receipt.ok is True
-        assert receipt.stage_after == "简历筛选"
+        assert receipt.stage_after == "新申请"
         ev = db.query(Event).filter_by(
             application_id=a.id, type=EventType.NOTE.value
         ).first()
@@ -202,6 +211,8 @@ class TestLifecycle:
         a = app_in_progress
         execute(db, action_code="create_application", application=a,
                 payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="assign_screening", application=a,
+                payload={"screener": "测试"}, actor_type="human", command_id=_uid())
         execute(db, action_code="pass_screening", application=a,
                 payload={}, actor_type="human", command_id=_uid())
         execute(db, action_code="schedule_interview", application=a,
@@ -304,6 +315,8 @@ class TestReceiptSnapshot:
         a = app_in_progress
         execute(db, action_code="create_application", application=a,
                 payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="assign_screening", application=a,
+                payload={"screener": "测试"}, actor_type="human", command_id=_uid())
 
         receipt = execute(db, action_code="pass_screening", application=a,
                           payload={}, actor_type="human", command_id=_uid())
@@ -316,6 +329,8 @@ class TestReceiptSnapshot:
         a = app_in_progress
         execute(db, action_code="create_application", application=a,
                 payload={}, actor_type="human", command_id=_uid())
+        execute(db, action_code="assign_screening", application=a,
+                payload={"screener": "测试"}, actor_type="human", command_id=_uid())
         execute(db, action_code="pass_screening", application=a,
                 payload={}, actor_type="human", command_id=_uid())
         execute(db, action_code="schedule_interview", application=a,

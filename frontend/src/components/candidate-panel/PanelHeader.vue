@@ -16,7 +16,12 @@
       </div>
       <div v-if="subtitle" class="panel-header__subtitle">{{ subtitle }}</div>
     </div>
-    <button class="panel-header__close" @click="$emit('close')" aria-label="关闭">×</button>
+    <div class="panel-header__controls">
+      <button class="panel-header__expand" @click="$emit('toggleExpand')" :aria-label="isExpanded ? '收起' : '展开'">
+        {{ isExpanded ? '⤡' : '⤢' }}
+      </button>
+      <button class="panel-header__close" @click="$emit('close')" aria-label="关闭">×</button>
+    </div>
   </div>
 </template>
 
@@ -28,11 +33,13 @@ const props = defineProps<{
   candidate: CandidateDetail
   applications: Application[]
   returnToJobId?: number | null
+  isExpanded?: boolean
 }>()
 
 defineEmits<{
   close: []
   back: []
+  toggleExpand: []
 }>()
 
 const isHired = computed(() =>
@@ -90,6 +97,26 @@ const subtitle = computed(() => {
   font-size: 13px;
   color: var(--color-text-secondary);
   margin-top: 2px;
+}
+
+.panel-header__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.panel-header__expand {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.panel-header__expand:hover {
+  color: var(--color-text-primary);
 }
 
 .panel-header__close {

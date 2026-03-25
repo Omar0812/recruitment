@@ -68,10 +68,14 @@ def app_with_events(db: Session) -> dict:
     db.add(a)
     db.flush()
 
-    # 建基础事件链：create + screening_passed
+    # 建基础事件链：create + assign_screening + screening_passed
     execute(
         db, action_code="create_application", application=a,
         payload={}, actor_type=ActorType.HUMAN.value, command_id=_uid(),
+    )
+    execute(
+        db, action_code="assign_screening", application=a,
+        payload={"screener": "测试"}, actor_type=ActorType.HUMAN.value, command_id=_uid(),
     )
     execute(
         db, action_code="pass_screening", application=a,

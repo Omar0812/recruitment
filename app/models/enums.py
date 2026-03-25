@@ -19,8 +19,9 @@ class Outcome(str, enum.Enum):
 
 
 class EventType(str, enum.Enum):
-    # Stage 推进类（6）
+    # Stage 推进类（7）
     APPLICATION_CREATED = "application_created"
+    SCREENING_ASSIGNED = "screening_assigned"
     SCREENING_PASSED = "screening_passed"
     ADVANCE_TO_OFFER = "advance_to_offer"
     START_BACKGROUND_CHECK = "start_background_check"

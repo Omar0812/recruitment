@@ -88,6 +88,11 @@ def handle_hire_confirmed(
 
 
 register(
+    "assign_screening",
+    guard=guards.guard_assign_screening,
+    handler=_make_advance_handler(EventType.SCREENING_ASSIGNED),
+)
+register(
     "pass_screening",
     guard=guards.guard_screening_passed,
     handler=_make_advance_handler(EventType.SCREENING_PASSED),

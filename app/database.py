@@ -105,6 +105,20 @@ def ensure_all_columns() -> None:
                   AND json_extract(payload, '$.cash_monthly') IS NOT NULL
             """))
 
+        # 阶段重新派生：APPLICATION_CREATED 从映射"简历筛选"改为"新申请"
+        # 将无 SCREENING_ASSIGNED 事件的活跃 Application 的 stage 从"简历筛选"修正为"新申请"
+        if "applications" in existing_tables and "events" in existing_tables:
+            conn.execute(text("""
+                UPDATE applications
+                SET stage = '新申请'
+                WHERE state = 'IN_PROGRESS'
+                  AND stage = '简历筛选'
+                  AND id NOT IN (
+                    SELECT application_id FROM events
+                    WHERE type = 'screening_assigned'
+                  )
+            """))
+
 
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()

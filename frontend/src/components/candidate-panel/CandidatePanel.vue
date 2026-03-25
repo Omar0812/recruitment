@@ -3,7 +3,7 @@
     <Transition name="panel-fade">
       <div v-if="state.isOpen" class="panel-overlay" @click.self="close">
         <Transition name="panel-slide">
-          <div v-if="state.isOpen" class="panel-drawer">
+          <div v-if="state.isOpen" class="panel-drawer" :class="{ 'panel-drawer--expanded': state.isExpanded }">
             <!-- Loading -->
             <div v-if="state.loading && !state.candidate" class="panel-loading">
               加载中...
@@ -20,8 +20,10 @@
                 :candidate="state.candidate"
                 :applications="state.applications"
                 :return-to-job-id="state.returnToJobId"
+                :is-expanded="state.isExpanded"
                 @close="close"
                 @back="handleBackToJob"
+                @toggle-expand="toggleExpand"
               />
 
               <!-- Tabs -->
@@ -144,7 +146,7 @@ import DuplicateResult from './DuplicateResult.vue'
 import MergeConfirm from './MergeConfirm.vue'
 import JoinPipelineInline from './JoinPipelineInline.vue'
 
-const { state, close, refresh } = useCandidatePanel()
+const { state, close, refresh, toggleExpand } = useCandidatePanel()
 const { open: openJobPanel } = useJobPanel()
 const router = useRouter()
 
@@ -502,6 +504,12 @@ function handleRetry() {
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--color-line);
+  transition: width 150ms;
+}
+
+.panel-drawer--expanded {
+  width: 85vw;
+  max-width: 1400px;
 }
 
 .panel-loading {

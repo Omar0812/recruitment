@@ -296,7 +296,7 @@ def test_check_duplicate_returns_blocking_match_shape(client, seed):
         "application_id": application.id,
         "job_id": job.id,
         "job_title": job.title,
-        "stage": "简历筛选",
+        "stage": "新申请",
     }
     assert "name" in match["match_reasons"]
 

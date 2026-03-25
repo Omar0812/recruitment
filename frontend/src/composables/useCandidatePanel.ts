@@ -10,6 +10,7 @@ interface CandidatePanelState {
   candidate: CandidateDetail | null
   applications: Application[]
   returnToJobId: number | null
+  isExpanded: boolean
 }
 
 interface CandidatePanelMutationState {
@@ -25,6 +26,7 @@ const state = reactive<CandidatePanelState>({
   candidate: null,
   applications: [],
   returnToJobId: null,
+  isExpanded: false,
 })
 
 const mutationState = reactive<CandidatePanelMutationState>({
@@ -76,6 +78,7 @@ export function closeCandidatePanel() {
   state.loading = false
   state.error = null
   state.returnToJobId = null
+  state.isExpanded = false
 }
 
 function markCandidatePanelMutation(candidateId: number) {
@@ -103,5 +106,6 @@ export function useCandidatePanel() {
     open: openCandidatePanel,
     close: closeCandidatePanel,
     refresh: refreshCandidatePanel,
+    toggleExpand: () => { state.isExpanded = !state.isExpanded },
   }
 }

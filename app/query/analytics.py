@@ -18,7 +18,7 @@ from app.models.term import Term
 
 # ── 常量 ────────────────────────────────────────────────────
 
-FUNNEL_STAGES = ["简历筛选", "面试", "Offer沟通", "背调", "待入职", "已入职"]
+FUNNEL_STAGES = ["新申请", "简历筛选", "面试", "Offer沟通", "背调", "待入职", "已入职"]
 SECTION_LABELS = {
     "headhunter": "猎头",
     "platform": "招聘平台",
@@ -189,7 +189,7 @@ def _get_stage_for_app(app: Application) -> str:
     if app.state == ApplicationState.HIRED.value:
         return "已入职"
     # 已结束（REJECTED/WITHDRAWN/LEFT）取 stage 字段（结束时所在阶段）
-    return app.stage or "简历筛选"
+    return app.stage or "新申请"
 
 
 def _source_tag_lookup(db: Session) -> tuple[dict[str, Term], dict[int, Term]]:
@@ -754,10 +754,11 @@ def _calc_stage_durations(apps: list[Application]) -> list[dict]:
 
         # 构建阶段时间线
         stage_enter: dict[str, datetime] = {}
-        current_stage = "简历筛选"
+        current_stage = "新申请"
         stage_enter[current_stage] = events[0].occurred_at
 
         stage_advancing_events = {
+            EventType.SCREENING_ASSIGNED.value: "简历筛选",
             EventType.SCREENING_PASSED.value: "面试",
             EventType.ADVANCE_TO_OFFER.value: "Offer沟通",
             EventType.START_BACKGROUND_CHECK.value: "背调",

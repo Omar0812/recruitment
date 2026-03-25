@@ -41,6 +41,7 @@ const { getEventSummary } = usePipeline()
 const summary = computed(() => getEventSummary(props.item.application.id))
 
 const STAGE_CLASS_MAP: Record<string, string> = {
+  '新申请': 'stage--new',
   '简历筛选': 'stage--screening',
   '面试': 'stage--interview',
   'Offer沟通': 'stage--offer',
@@ -120,6 +121,7 @@ function handleNameClick() {
   white-space: nowrap;
 }
 
+.stage--new       { background: #F0EDE8; color: #5C5347; }
 .stage--screening { background: #E8EAE6; color: #4A5242; }
 .stage--interview { background: #E3E8ED; color: #3D4F5F; }
 .stage--offer     { background: #F0E8DF; color: #6B5340; }

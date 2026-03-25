@@ -103,13 +103,17 @@
 
     <!-- 正常展示：timeline 行 -->
     <template v-else>
-      <div class="event-card__row">
+      <div
+        class="event-card__row"
+        :class="{ 'event-card__row--expandable': canExpand }"
+        @click="canExpand && (isExpanded = !isExpanded)"
+      >
         <span class="event-card__dot">●</span>
         <span class="event-card__type">{{ typeLabel }}</span>
         <span v-if="conclusion" class="event-card__conclusion">{{ conclusion }}</span>
         <span class="event-card__time">{{ formattedTime }}</span>
         <span v-if="actorName" class="event-card__actor" :class="{ 'event-card__actor--deleted': props.event.actor_deleted }">{{ actorName }}</span>
-        <span v-if="inlineSummary" class="event-card__summary">{{ inlineSummary }}</span>
+        <span v-if="inlineSummary" class="event-card__summary" :class="{ 'event-card__summary--expanded': isExpanded }">{{ inlineSummary }}</span>
         <div v-if="event.type !== 'application_created'" class="event-card__menu-wrapper" @click.stop>
           <button class="event-card__menu-btn" @click="menuOpen = !menuOpen">...</button>
           <div v-if="menuOpen" class="event-card__menu" @click="menuOpen = false">
@@ -149,6 +153,7 @@ const { doAction, refreshExpanded } = usePipeline()
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   application_created: '创建申请',
+  screening_assigned: '推进到简历筛选',
   screening_passed: '通过筛选',
   advance_to_offer: '进入 Offer',
   start_background_check: '开始背调',
@@ -192,6 +197,9 @@ const EDIT_FIELDS_MAP: Record<string, EditFieldDef[]> = {
   application_ended: [
     { key: 'outcome', label: '结束原因', type: 'select', options: [{ value: 'rejected', label: '淘汰' }, { value: 'withdrawn', label: '候选人退出' }] },
     { key: 'reason', label: '具体原因', type: 'text' },
+  ],
+  screening_assigned: [
+    { key: 'screener', label: '筛选人', type: 'text' },
   ],
 }
 
@@ -260,6 +268,10 @@ const inlineSummary = computed(() => {
       if (p?.interviewer) parts.push(`${p.interviewer}主面`)
       return parts.join(' · ')
     }
+    case 'screening_assigned': {
+      if (p?.screener) return `筛选人: ${p.screener}`
+      return body ?? ''
+    }
     case 'interview_feedback': {
       const parts: string[] = []
       if (body) parts.push(body)
@@ -302,6 +314,12 @@ function isFieldLocked(fieldKey: string): boolean {
 const editing = ref(false)
 const editBody = ref('')
 const editPayload = reactive<Record<string, any>>({})
+
+// 面评展开
+const isExpanded = ref(false)
+const canExpand = computed(() =>
+  props.event.type === 'interview_feedback' && !!props.event.body,
+)
 
 const editFields = computed(() => EDIT_FIELDS_MAP[props.event.type] ?? [])
 
@@ -427,6 +445,16 @@ function startDelete() {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--color-text-secondary);
+}
+
+.event-card__summary--expanded {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+.event-card__row--expandable {
+  cursor: pointer;
 }
 
 /* ── [...] 菜单 ── */

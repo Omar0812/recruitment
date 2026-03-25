@@ -34,7 +34,7 @@ class TestStageDerive:
 
     def test_single_application_created(self):
         app = _FakeApp([_make_event(EventType.APPLICATION_CREATED.value)])
-        assert derive(app) == "简历筛选"
+        assert derive(app) == "新申请"
 
     def test_screening_passed(self):
         app = _FakeApp([
@@ -57,7 +57,7 @@ class TestStageDerive:
             _make_event(EventType.APPLICATION_CREATED.value),
             _make_event(EventType.NOTE.value),
         ])
-        assert derive(app) == "简历筛选"
+        assert derive(app) == "新申请"
 
     def test_full_chain_to_hired(self):
         app = _FakeApp([
@@ -82,6 +82,7 @@ class TestStageDerive:
     def test_stage_map_covers_all_advance_types(self):
         advance_types = {
             EventType.APPLICATION_CREATED.value,
+            EventType.SCREENING_ASSIGNED.value,
             EventType.SCREENING_PASSED.value,
             EventType.ADVANCE_TO_OFFER.value,
             EventType.START_BACKGROUND_CHECK.value,

@@ -97,7 +97,7 @@ const groupMode = ref<GroupMode>('all')
 const collapsedKeys = reactive(new Set<string>())
 
 // 阶段排序权重（与后端 STAGE_ORDER 一致）
-const STAGE_ORDER: string[] = ['简历筛选', '面试', 'Offer沟通', '背调', '待入职']
+const STAGE_ORDER: string[] = ['新申请', '简历筛选', '面试', 'Offer沟通', '背调', '待入职']
 
 function buildGroups(items: PipelineItem[], mode: GroupMode): PipelineGroup[] {
   if (mode === 'all') {

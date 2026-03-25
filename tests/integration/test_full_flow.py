@@ -106,7 +106,7 @@ class TestFullRecruitmentFlow:
         assert resp2.status_code == 200
         app_data = resp2.json()
         assert app_data["state"] == "IN_PROGRESS"
-        assert app_data["stage"] == "简历筛选"
+        assert app_data["stage"] == "新申请"
 
     # ── 5. 全链路阶段推进 ──
 
@@ -121,6 +121,12 @@ class TestFullRecruitmentFlow:
         data = resp.json()
         assert data["ok"] is True, f"{action_code} 返回 ok=false: {data}"
         return data
+
+    def test_assign_screening(self, client):
+        data = self._execute_action(client, "assign_screening", {
+            "screener": "测试筛选人",
+        })
+        assert data["stage_after"] == "简历筛选"
 
     def test_pass_screening(self, client):
         data = self._execute_action(client, "pass_screening")
@@ -193,8 +199,8 @@ class TestFullRecruitmentFlow:
         assert resp.status_code == 200
         events = resp.json()
 
-        # 至少包含：application_created + 6 个推进类 + 若干记录类
-        assert len(events) >= 7, f"事件数量不足: {len(events)}"
+        # 至少包含：application_created + screening_assigned + 6 个推进类 + 若干记录类
+        assert len(events) >= 8, f"事件数量不足: {len(events)}"
 
         # 验证 actor_id 一致
         for ev in events:
@@ -207,6 +213,7 @@ class TestFullRecruitmentFlow:
         event_types = {ev["type"] for ev in events}
         expected_types = {
             "application_created",
+            "screening_assigned",
             "screening_passed",
             "interview_scheduled",
             "advance_to_offer",

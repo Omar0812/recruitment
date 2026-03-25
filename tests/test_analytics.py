@@ -187,7 +187,9 @@ class TestOverviewAPI:
         result = get_overview(db, date(2026, 3, 1), date(2026, 3, 31))
         funnel = {f["stage"]: f for f in result["funnel"]}
 
-        # 4 apps in cohort, all start at 简历筛选
+        # 4 apps in cohort, all start at 新申请
+        assert funnel["新申请"]["count"] == 4
+        # all 4 passed through 简历筛选
         assert funnel["简历筛选"]["count"] == 4
         # a1(面试), a2(已入职→通过面试), a3(rejected at 面试) = 3 passed 面试
         assert funnel["面试"]["count"] == 3
@@ -249,7 +251,7 @@ class TestJobsAPI:
         assert j1["priority"] == "high"
         assert j1["headcount"] == 3
         assert j1["hired_count"] == 1
-        assert j1["funnel"][0]["count"] == 2  # 简历筛选: a1, a2
+        assert j1["funnel"][0]["count"] == 2  # 新申请: a1, a2
         assert j1["pass_rate"] == 50.0  # 1 hired out of 2
         assert j1["avg_cycle_days"] == 14.0
 
@@ -265,7 +267,7 @@ class TestJobsAPI:
         from app.query.analytics import get_jobs_list
         result = get_jobs_list(db, date(2026, 3, 1), date(2026, 3, 31))
         totals = result["totals"]
-        # 4 total apps at 简历筛选
+        # 4 total apps at 新申请
         assert totals["funnel"][0]["count"] == 4
 
     def test_job_drilldown(self, db):
@@ -280,7 +282,7 @@ class TestJobsAPI:
 
         # Stage durations should have entries
         durations = {d["stage"]: d for d in result["stage_durations"]}
-        assert durations["简历筛选"]["sample_size"] >= 1
+        assert durations["新申请"]["sample_size"] >= 1
 
         # Source distribution
         sources = {s["source"]: s["count"] for s in result["source_distribution"]}

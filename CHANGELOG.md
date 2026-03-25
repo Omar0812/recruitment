@@ -4,9 +4,21 @@
 
 ## [1.8.4] — 2026-03-26
 
-> 5 个点状可用性修复
+> 5 个点状可用性修复 + 简历筛选流程重构 + 面板展开 + 面评展开
+
+### Added
+- 「新申请」初始阶段：创建申请后先落入新申请，需主动「推进到简历筛选」
+- `assign_screening` action：指定筛选人，推进到简历筛选阶段
+- ScreeningForm（筛选人表单）+ ScreeningConclusionForm（通过/淘汰二选一）
+- CandidatePanel 展开/收起能力（480px ⇄ 85vw, max-width 1400px）
+- EventCard 面评事件行内展开（点击展开完整 body）
+- 存量数据迁移：启动时自动修正旧 Application 的 stage 字段
 
 ### Changed
+- 阶段链从 6 阶段扩展为 7 阶段（新申请 → 简历筛选 → 面试 → ...）
+- `pass_screening` guard 增加 SCREENING_ASSIGNED 前置条件
+- briefing.py 待办逻辑拆分：新申请/简历筛选 分别计算等待天数
+- analytics.py 漏斗阶段 + 阶段耗时 + fallback 同步更新
 - PipelineView 布局从 800px 左对齐改为 1100px 居中
 - AI 简历解析三 provider 启用结构化 JSON 输出（Anthropic output_config / Gemini response_mime_type / OpenAI fallback 缩窄为 BadRequestError）
 - Toast showToastUndo 新增砖红色确认按钮，所有调用方传语义化 confirmLabel

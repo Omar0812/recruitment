@@ -191,9 +191,15 @@ def _build_todos(db: Session, active_apps, exclude_app_ids: set[int], today: dat
             "job_priority": app.job.priority,
         }
 
-        if stage == "简历筛选":
+        if stage == "新申请":
             created = _last_event(events, EventType.APPLICATION_CREATED.value)
             d = _days_since(created.occurred_at.date(), today) if created else 0
+            screening.append({**base, "days": d, "time_label": f"等待 {d} 天"})
+            todo_app_ids.add(app.id)
+
+        elif stage == "简历筛选":
+            assigned = _last_event(events, EventType.SCREENING_ASSIGNED.value)
+            d = _days_since(assigned.occurred_at.date(), today) if assigned else 0
             screening.append({**base, "days": d, "time_label": f"等待 {d} 天"})
             todo_app_ids.add(app.id)
 
@@ -311,7 +317,7 @@ def _build_focus(db: Session, active_apps, todo_app_ids: set[int], today: date):
         hired_count = hired_map.get(job.id, 0)
 
         job_age = _days_since(job.created_at.date(), today) if job.created_at else 0
-        front_stages = {"简历筛选", "面试"}
+        front_stages = {"新申请", "简历筛选", "面试"}
         front_count = sum(1 for a in job_apps if a.stage in front_stages)
         back_count = active_count - front_count
 

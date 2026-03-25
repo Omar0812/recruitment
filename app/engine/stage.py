@@ -1,7 +1,7 @@
 """Stage 派生：从 Application 的 Event 时间线计算当前阶段。
 
-规则（data-model.md § 3.3）：
-- 仅 6 种「Stage 推进类」EventType 触发阶段跳转
+规则：
+- 仅 7 种「Stage 推进类」EventType 触发阶段跳转
 - 取时间线中最后一个触发跳转的 Event，对应当前 Stage
 - 阶段内记录类 / 生命周期类 / 自由记录类不影响 Stage
 """
@@ -11,7 +11,8 @@ from app.models.enums import EventType
 
 # EventType.value -> Stage 名称
 STAGE_MAP: dict[str, str] = {
-    EventType.APPLICATION_CREATED.value: "简历筛选",
+    EventType.APPLICATION_CREATED.value: "新申请",
+    EventType.SCREENING_ASSIGNED.value: "简历筛选",
     EventType.SCREENING_PASSED.value: "面试",
     EventType.ADVANCE_TO_OFFER.value: "Offer沟通",
     EventType.START_BACKGROUND_CHECK.value: "背调",

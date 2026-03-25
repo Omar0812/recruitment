@@ -39,6 +39,8 @@ import InterviewForm from './forms/InterviewForm.vue'
 import FeedbackForm from './forms/FeedbackForm.vue'
 import OfferForm from './forms/OfferForm.vue'
 import BackgroundCheckForm from './forms/BackgroundCheckForm.vue'
+import ScreeningForm from './forms/ScreeningForm.vue'
+import ScreeningConclusionForm from './forms/ScreeningConclusionForm.vue'
 
 const props = defineProps<{
   stage: string | null
@@ -60,8 +62,11 @@ interface StageActionMapping {
 }
 
 const STAGE_ACTION_MAP: Record<string, StageActionMapping[]> = {
+  '新申请': [
+    { code: 'assign_screening', label: '推进到简历筛选', form: ScreeningForm },
+  ],
   '简历筛选': [
-    { code: 'pass_screening', label: '通过，安排面试' },
+    { code: 'pass_screening', label: '填写筛选结论', form: ScreeningConclusionForm },
   ],
   '面试': [
     { code: 'schedule_interview', label: '安排面试', form: InterviewForm },

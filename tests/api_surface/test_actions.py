@@ -20,6 +20,16 @@ def test_catalog_returns_all_actions(client):
 
 def test_execute_success(client, seed):
     app = seed["application"]
+    # 先推进到简历筛选（新增前置条件）
+    r0 = client.post("/api/v1/actions/execute", json={
+        "command_id": _uid(),
+        "action_code": "assign_screening",
+        "target": {"type": "application", "id": app.id},
+        "payload": {"screener": "范德彪"},
+        "actor": {"type": "human"},
+    })
+    assert r0.status_code == 200
+
     r = client.post("/api/v1/actions/execute", json={
         "command_id": _uid(),
         "action_code": "pass_screening",
@@ -90,7 +100,7 @@ def test_execute_candidate_create_application_creates_real_application(client, d
         .one()
     )
     assert application.state == ApplicationState.IN_PROGRESS.value
-    assert application.stage == "简历筛选"
+    assert application.stage == "新申请"
 
 
 def test_execute_candidate_blacklist_persists_fields(client, db, seed):

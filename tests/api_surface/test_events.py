@@ -10,6 +10,12 @@ from app.models.event import Event
 class TestUpdateEvent:
     def test_update_payload_merges(self, client, db, seed):
         a = seed["application"]
+        # assign_screening（pass_screening 的前置条件）
+        execute(
+            db, action_code="assign_screening", application=a,
+            payload={"screener": "测试"}, actor_type=ActorType.HUMAN.value,
+            command_id=seed["uid"](),
+        )
         # pass_screening 以产生一个带 payload 的 event
         execute(
             db, action_code="pass_screening", application=a,
