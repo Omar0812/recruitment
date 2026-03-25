@@ -110,7 +110,7 @@
         <span class="event-card__time">{{ formattedTime }}</span>
         <span v-if="actorName" class="event-card__actor" :class="{ 'event-card__actor--deleted': props.event.actor_deleted }">{{ actorName }}</span>
         <span v-if="inlineSummary" class="event-card__summary">{{ inlineSummary }}</span>
-        <div class="event-card__menu-wrapper" @click.stop>
+        <div v-if="event.type !== 'application_created'" class="event-card__menu-wrapper" @click.stop>
           <button class="event-card__menu-btn" @click="menuOpen = !menuOpen">...</button>
           <div v-if="menuOpen" class="event-card__menu" @click="menuOpen = false">
             <button class="event-card__menu-item" @click="startEdit">编辑</button>
@@ -369,7 +369,7 @@ function startDelete() {
       target: { type: 'application', id: props.applicationId },
       payload: { event_id: props.event.id },
     }).catch(() => {})
-  })
+  }, undefined, '确认删除')
 }
 </script>
 

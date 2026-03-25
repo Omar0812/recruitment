@@ -141,7 +141,8 @@ async function confirm() {
         }
         restoreItem(removedItem)
         await loadPipeline()
-      }
+      },
+      '确认结束'
     )
   } catch {
     // doAction 已 toast，面板保持打开

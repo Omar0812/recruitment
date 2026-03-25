@@ -125,6 +125,8 @@ async function handleConfirm() {
         // 关闭失败时静默（toast 已消失，无法展示错误）
       }
     },
+    undefined,
+    '确认关闭'
   )
 }
 </script>

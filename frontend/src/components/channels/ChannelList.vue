@@ -332,7 +332,8 @@ function confirmDeleteTag(tagId: number) {
     () => {
       // 撤回：恢复显示
       hiddenTagIds.value.delete(tagId)
-    }
+    },
+    '确认删除'
   )
 }
 

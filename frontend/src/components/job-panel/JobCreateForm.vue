@@ -45,7 +45,7 @@
           <div class="inline-actions">
             <button
               type="button"
-              class="btn-primary"
+              class="btn btn--primary"
               :disabled="creatingDepartment || !newDepartmentName.trim()"
               @click="handleCreateDepartment"
             >
@@ -90,7 +90,7 @@
           <div class="inline-actions">
             <button
               type="button"
-              class="btn-primary"
+              class="btn btn--primary"
               :disabled="creatingLocation || !newLocationName.trim()"
               @click="handleCreateLocation"
             >
@@ -158,8 +158,8 @@
       </div>
 
       <div class="form-actions">
-        <button type="button" :disabled="submitting" @click="$emit('cancel')">取消</button>
-        <button type="submit" class="btn-primary" :disabled="submitting || loadingTerms">
+        <button type="button" class="btn btn--ghost" :disabled="submitting" @click="$emit('cancel')">取消</button>
+        <button type="submit" class="btn btn--primary" :disabled="submitting || loadingTerms">
           {{ submitting ? (isEditMode ? '保存中...' : '创建中...') : (isEditMode ? '保存' : '创建') }}
         </button>
       </div>
@@ -515,23 +515,8 @@ async function handleSubmit() {
   margin-top: 24px;
 }
 
-.form-actions button {
-  padding: 10px 20px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-secondary);
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.btn-primary {
-  background: var(--color-primary);
-  color: white;
-  border-color: var(--color-primary);
-}
-
-.form-actions button:disabled,
 .inline-actions button:disabled {
-  opacity: 0.6;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 </style>

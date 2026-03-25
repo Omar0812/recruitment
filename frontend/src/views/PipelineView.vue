@@ -114,7 +114,8 @@ onMounted(loadPage)
 
 <style scoped>
 .pipeline-page {
-  max-width: 800px;
+  max-width: 1100px;
+  margin: 0 auto;
 }
 
 .pipeline-header {

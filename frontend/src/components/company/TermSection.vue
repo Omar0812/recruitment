@@ -242,6 +242,7 @@ function handleDeleteWithUndo(item: Term) {
       }
     },
     () => { /* undo: do nothing, item was never deleted */ },
+    '确认删除'
   )
 }
 

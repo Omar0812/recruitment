@@ -293,6 +293,7 @@ def _call_text(provider: str, cfg: dict, text: str) -> str:
 
 
 def _call_openai_vision(cfg: dict, images: list[str]) -> str:
+    import openai
     from openai import OpenAI
     client = OpenAI(api_key=cfg["api_key"], base_url=cfg.get("base_url"))
     model = cfg.get("model", "gpt-4o")
@@ -312,7 +313,7 @@ def _call_openai_vision(cfg: dict, images: list[str]) -> str:
             ],
             response_format={"type": "json_object"},
         )
-    except Exception:
+    except openai.BadRequestError:
         resp = client.chat.completions.create(
             model=model,
             messages=[
@@ -324,6 +325,7 @@ def _call_openai_vision(cfg: dict, images: list[str]) -> str:
 
 
 def _call_openai_text(cfg: dict, text: str) -> str:
+    import openai
     from openai import OpenAI
     client = OpenAI(api_key=cfg["api_key"], base_url=cfg.get("base_url"))
     model = cfg.get("model", "gpt-4o")
@@ -337,7 +339,7 @@ def _call_openai_text(cfg: dict, text: str) -> str:
             ],
             response_format={"type": "json_object"},
         )
-    except Exception:
+    except openai.BadRequestError:
         resp = client.chat.completions.create(
             model=model,
             messages=[
@@ -346,6 +348,69 @@ def _call_openai_text(cfg: dict, text: str) -> str:
             ],
         )
     return resp.choices[0].message.content
+
+
+_RESUME_JSON_SCHEMA = {
+    "name": "resume",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "name": {"type": ["string", "null"]},
+            "name_en": {"type": ["string", "null"]},
+            "phone": {"type": ["string", "null"]},
+            "email": {"type": ["string", "null"]},
+            "age": {"type": ["integer", "null"]},
+            "city": {"type": ["string", "null"]},
+            "years_exp": {"type": ["number", "null"]},
+            "skill_tags": {"type": "array", "items": {"type": "string"}},
+            "education_list": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "degree": {"type": ["string", "null"]},
+                        "school": {"type": ["string", "null"]},
+                        "major": {"type": ["string", "null"]},
+                        "period": {"type": ["string", "null"]},
+                    },
+                    "required": ["degree", "school", "major", "period"],
+                    "additionalProperties": False,
+                },
+            },
+            "work_experience": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "company": {"type": ["string", "null"]},
+                        "title": {"type": ["string", "null"]},
+                        "period": {"type": ["string", "null"]},
+                        "description": {"type": ["string", "null"]},
+                    },
+                    "required": ["company", "title", "period", "description"],
+                    "additionalProperties": False,
+                },
+            },
+            "project_experience": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": ["string", "null"]},
+                        "role": {"type": ["string", "null"]},
+                        "period": {"type": ["string", "null"]},
+                        "description": {"type": ["string", "null"]},
+                    },
+                    "required": ["name", "role", "period", "description"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["name", "name_en", "phone", "email", "age", "city", "years_exp",
+                     "skill_tags", "education_list", "work_experience", "project_experience"],
+        "additionalProperties": False,
+    },
+}
 
 
 def _call_anthropic_vision(cfg: dict, images: list[str]) -> str:
@@ -359,12 +424,21 @@ def _call_anthropic_vision(cfg: dict, images: list[str]) -> str:
     ]
     user_content = image_blocks + [{"type": "text", "text": "请解析这份简历。"}]
 
-    resp = client.messages.create(
-        model=model,
-        max_tokens=4096,
-        system=VISION_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_content}],
-    )
+    try:
+        resp = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=VISION_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_content}],
+            output_config={"format": {"type": "json_schema", "json_schema": _RESUME_JSON_SCHEMA}},
+        )
+    except (anthropic.BadRequestError, TypeError):
+        resp = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=VISION_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_content}],
+        )
     return resp.content[0].text
 
 
@@ -373,12 +447,21 @@ def _call_anthropic_text(cfg: dict, text: str) -> str:
     client = anthropic.Anthropic(api_key=cfg["api_key"])
     model = cfg.get("model", "claude-sonnet-4-6")
 
-    resp = client.messages.create(
-        model=model,
-        max_tokens=4096,
-        system=TEXT_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": text}],
-    )
+    try:
+        resp = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=TEXT_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": text}],
+            output_config={"format": {"type": "json_schema", "json_schema": _RESUME_JSON_SCHEMA}},
+        )
+    except (anthropic.BadRequestError, TypeError):
+        resp = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=TEXT_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": text}],
+        )
     return resp.content[0].text
 
 
@@ -396,7 +479,13 @@ def _call_gemini_vision(cfg: dict, images: list[str]) -> str:
         parts.append({"inline_data": {"mime_type": "image/png", "data": img}})
     parts.append("请解析这份简历。")
 
-    resp = model.generate_content(parts)
+    try:
+        resp = model.generate_content(
+            parts,
+            generation_config=genai.types.GenerationConfig(response_mime_type="application/json"),
+        )
+    except (TypeError, ValueError):
+        resp = model.generate_content(parts)
     return resp.text
 
 
@@ -408,7 +497,13 @@ def _call_gemini_text(cfg: dict, text: str) -> str:
         system_instruction=TEXT_SYSTEM_PROMPT,
     )
 
-    resp = model.generate_content(text)
+    try:
+        resp = model.generate_content(
+            text,
+            generation_config=genai.types.GenerationConfig(response_mime_type="application/json"),
+        )
+    except (TypeError, ValueError):
+        resp = model.generate_content(text)
     return resp.text
 
 

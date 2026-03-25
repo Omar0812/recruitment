@@ -78,7 +78,7 @@ describe('JobCreateForm', () => {
 
     const newDepartmentInput = wrapper.find('input[placeholder="输入新部门名称"]')
     await newDepartmentInput.setValue('产品部')
-    await wrapper.find('.inline-actions .btn-primary').trigger('click')
+    await wrapper.find('.inline-actions .btn--primary').trigger('click')
     await flushPromises()
 
     expect(createDepartment).toHaveBeenCalledWith({
@@ -99,7 +99,7 @@ describe('JobCreateForm', () => {
     const inlineInputs = wrapper.findAll('.inline-create input')
     await inlineInputs[0].setValue('上海')
     await inlineInputs[1].setValue('上海市静安区')
-    await wrapper.find('.inline-actions .btn-primary').trigger('click')
+    await wrapper.find('.inline-actions .btn--primary').trigger('click')
     await flushPromises()
 
     expect(createLocation).toHaveBeenCalledWith({
@@ -148,7 +148,7 @@ describe('JobCreateForm', () => {
 
     const inlineInputs = wrapper.findAll('.inline-create input')
     await inlineInputs[0].setValue('杭州')
-    await wrapper.find('.inline-actions .btn-primary').trigger('click')
+    await wrapper.find('.inline-actions .btn--primary').trigger('click')
     await flushPromises()
 
     expect(createLocation).toHaveBeenCalledWith({

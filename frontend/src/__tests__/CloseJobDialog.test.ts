@@ -48,6 +48,8 @@ describe('CloseJobDialog', () => {
     expect(showToastUndo).toHaveBeenCalledWith(
       '岗位即将关闭',
       expect.any(Function),
+      undefined,
+      '确认关闭'
     )
   })
 

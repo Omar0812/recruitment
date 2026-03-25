@@ -80,4 +80,37 @@ describe('useToastUndo', () => {
     expect(onExecute).not.toHaveBeenCalled()
     expect(document.querySelector('.toast-undo')).toBeNull()
   })
+
+  it('点击确认按钮 → 立即执行 onExecute 并移除 toast', () => {
+    const onExecute = vi.fn()
+    const onUndo = vi.fn()
+    showToastUndo('已删除', onExecute, onUndo)
+
+    const confirmBtn = document.querySelector('.toast-undo__confirm') as HTMLElement
+    expect(confirmBtn).toBeTruthy()
+
+    confirmBtn.click()
+
+    expect(onExecute).toHaveBeenCalledOnce()
+    expect(onUndo).not.toHaveBeenCalled()
+    expect(document.querySelector('.toast-undo')).toBeNull()
+
+    // 5 秒后不再重复调用
+    vi.advanceTimersByTime(5000)
+    expect(onExecute).toHaveBeenCalledOnce()
+  })
+
+  it('确认按钮默认文案为「确认」', () => {
+    showToastUndo('已删除', vi.fn())
+
+    const confirmBtn = document.querySelector('.toast-undo__confirm') as HTMLElement
+    expect(confirmBtn.textContent).toBe('确认')
+  })
+
+  it('确认按钮支持自定义文案', () => {
+    showToastUndo('已删除', vi.fn(), undefined, '确认删除')
+
+    const confirmBtn = document.querySelector('.toast-undo__confirm') as HTMLElement
+    expect(confirmBtn.textContent).toBe('确认删除')
+  })
 })

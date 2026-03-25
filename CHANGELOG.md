@@ -2,6 +2,19 @@
 
 所有版本更新记录。格式遵循 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.8.4] — 2026-03-26
+
+> 5 个点状可用性修复
+
+### Changed
+- PipelineView 布局从 800px 左对齐改为 1100px 居中
+- AI 简历解析三 provider 启用结构化 JSON 输出（Anthropic output_config / Gemini response_mime_type / OpenAI fallback 缩窄为 BadRequestError）
+- Toast showToastUndo 新增砖红色确认按钮，所有调用方传语义化 confirmLabel
+
+### Fixed
+- JobCreateForm 按钮从组件内 btn-primary（苔绿）统一为全局 btn--primary（暖黑）
+- EventCard application_created 事件隐藏 [...] 编辑/删除菜单
+
 ## [1.8.3] — 2026-03-23
 
 > 全面加固：评审报告 6 批修复 + 查重合并 + 数据分析简化 + CI/测试/备份

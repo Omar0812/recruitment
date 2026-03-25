@@ -31,6 +31,21 @@
   background: rgba(255,255,255,0.1);
 }
 
+.toast-undo__confirm {
+  background: var(--color-urgent, #C4472A);
+  border: none;
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.toast-undo__confirm:hover {
+  opacity: 0.85;
+}
+
 .toast-undo__progress {
   position: absolute;
   bottom: 0;
