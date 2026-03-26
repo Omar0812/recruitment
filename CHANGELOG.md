@@ -26,6 +26,7 @@
 ### Fixed
 - JobCreateForm 按钮从组件内 btn-primary（苔绿）统一为全局 btn--primary（暖黑）
 - EventCard application_created 事件隐藏 [...] 编辑/删除菜单
+- assign_screening guard 增加阶段超越检查，防止旧数据面试/Offer 阶段候选人被误回退
 
 ## [1.8.3] — 2026-03-23
 
