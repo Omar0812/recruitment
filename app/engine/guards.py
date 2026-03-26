@@ -60,10 +60,20 @@ def guard_screening_passed(application, payload: dict) -> None:
 
 
 def guard_assign_screening(application, payload: dict) -> None:
-    """推进到简历筛选：IN_PROGRESS + 无 SCREENING_ASSIGNED 事件。"""
+    """推进到简历筛选：IN_PROGRESS + 无 SCREENING_ASSIGNED 事件 + 未超越筛选阶段。"""
     require_active(application)
+    # 已有 screening_assigned → 不能重复
+    # 已有 screening_passed 或更后面的事件 → 已超越此阶段
+    _PAST_SCREENING = {
+        EventType.SCREENING_ASSIGNED.value,
+        EventType.SCREENING_PASSED.value,
+        EventType.ADVANCE_TO_OFFER.value,
+        EventType.START_BACKGROUND_CHECK.value,
+        EventType.OFFER_RECORDED.value,
+        EventType.HIRE_CONFIRMED.value,
+    }
     for ev in application.events:
-        if ev.type == EventType.SCREENING_ASSIGNED.value:
+        if ev.type in _PAST_SCREENING:
             raise BusinessError("already_screening", "已推进到简历筛选，无需重复操作")
 
 
