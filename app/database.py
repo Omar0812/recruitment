@@ -119,6 +119,26 @@ def ensure_all_columns() -> None:
                   )
             """))
 
+        # 移除 events 表的 CHECK 约束（旧数据库用枚举创建了 ck_events_type，
+        # 新增 screening_assigned 后会被拦截）
+        if "events" in existing_tables:
+            row = conn.execute(text(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='events'"
+            )).fetchone()
+            if row and row[0] and "CHECK" in row[0].upper():
+                import re
+                old_sql = row[0]
+                # 按行过滤掉包含 CHECK 的行
+                lines = old_sql.split('\n')
+                new_lines = [l for l in lines if not re.search(r'\bCHECK\s*\(', l, re.IGNORECASE)]
+                new_sql = '\n'.join(new_lines)
+                if new_sql != old_sql:
+                    conn.execute(text("PRAGMA writable_schema = ON"))
+                    conn.execute(text(
+                        "UPDATE sqlite_master SET sql = :new_sql WHERE type='table' AND name='events'"
+                    ), {"new_sql": new_sql})
+                    conn.execute(text("PRAGMA writable_schema = OFF"))
+
 
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
